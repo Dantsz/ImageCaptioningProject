@@ -9,3 +9,4 @@ kaggle
 polars
 numpy<2
 matplotlib
+seaborn
