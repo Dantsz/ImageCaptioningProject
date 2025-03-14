@@ -1,0 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchviz
+torchvision
+torchinfo
+pillow
+kagglehub
+kaggle
+polars
+numpy<2
+matplotlib
