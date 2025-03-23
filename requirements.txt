@@ -10,3 +10,4 @@ polars
 numpy<2
 matplotlib
 seaborn
+tqdm
