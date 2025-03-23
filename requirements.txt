@@ -11,3 +11,4 @@ numpy<2
 matplotlib
 seaborn
 tqdm
+ipywidgets==7.7.1
