@@ -3,3 +3,5 @@ __pycache__/
 model.pth
 models/
 validation/
+datasets/
+models_aidectect/
