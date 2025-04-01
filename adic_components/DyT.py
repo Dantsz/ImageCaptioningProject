@@ -17,3 +17,9 @@ class DyT(nn.Module):
     def forward(self, x):
         x = F.tanh(self.alpha * x)
         return self.gamma * x + self.beta
+
+    def __repr__(self):
+        return (f"DyT(C={self.C}, "
+                f"alpha={self.alpha.item():.4f}, "
+                f"gamma=Tensor(shape={tuple(self.gamma.shape)}), "
+                f"beta=Tensor(shape={tuple(self.beta.shape)}))")
