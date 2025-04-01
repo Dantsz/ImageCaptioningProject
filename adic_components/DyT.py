@@ -20,7 +20,6 @@ class DyT(nn.Module):
         return self.gamma * x + self.beta
 
     def __repr__(self):
-        logger.error('Remove this in 0.1.6')
         return (f"DyT(C={self.C}, "
                 f"alpha={self.alpha.item():.4f}, "
                 f"gamma=Tensor(shape={tuple(self.gamma.shape)}), "
