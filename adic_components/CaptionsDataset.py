@@ -3,7 +3,14 @@ import json
 from loguru import logger
 import os
 from PIL import Image
+from torchvision.transforms import v2
 
+default_transform = v2.Compose([
+        v2.Resize((224, 224)),
+        #v2.RandomCrop((224, 224), pad_if_needed=True, padding_mode='symmetric'),
+        v2.ToTensor(),
+        v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
 
 class CaptionDataset(Dataset):
     def __init__(self, images_dir: str, json_path: str, transform=None):
