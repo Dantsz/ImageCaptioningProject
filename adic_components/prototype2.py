@@ -14,7 +14,7 @@ class P2Encoder(nn.Module):
             input_height: The height of the input image
             d_model: The dimension of the model embeddings, which should be the same as the input embeddings of the decoder
         '''
-        assert input_channels == 3, "Currently only RGB images are supported"
+        assert input_channels == 3 or input_channels == 1, "Currently only RGB or Grayscale images are supported"
         assert input_width % 16 == 0, "Input width must be a multiple of 16"
         assert input_height % 16 == 0, "Input height must be a multiple of 16"
         super(P2Encoder, self).__init__()
