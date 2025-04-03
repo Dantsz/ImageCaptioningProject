@@ -6,3 +6,4 @@ datasets/
 models_aidectect/
 trained_model.pth
 experiments/
+cnnlab.ipynb
