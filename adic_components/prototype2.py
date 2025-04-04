@@ -1,6 +1,7 @@
+from typing import Optional
 import torch
 from torch import nn
-
+from transformers import GPT2Model
 class P2EncoderGluer(nn.Module):
     '''
         Adjusts the output of the encoder to be compatible with the decoder.
@@ -96,15 +97,44 @@ class P2Encoder(nn.Module):
         x = x + identity
 
         B, C, H, W = x.shape
-        x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, seq_length, d_model)
+        x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_modela, this is how the input to cross attention should look like
         x = self.gluer(x)
         return x
 
+
+class P2GPTBlock(GPT2Model):
+    '''
+        The GPT block of the decoder is very similar to a GPT-2, with addition of a cross attention layer and decoupled embedding/de-embedding MLPs,
+        this is done to allow fine-tuning of the model without touching the self-attention weights.
+    '''
+    def __init__(self, d_model: int):
+        super(P2GPTBlock, self).__init__()
+
+    def forward(self, input_ids: Optional[torch.LongTensor], **kwargs):
+        '''
+        Args:
+            input_ids: The input tensor of shape (batch_size, seq_length)
+        Returns:
+            A tensor of shape (batch_size, seq_length, d_model) containing the embeddings
+        '''
+        output = super().forward(input_ids, **kwargs)
+        return output
 class P2Decoder(nn.Module):
     def __init__(self):
         super(P2Decoder, self).__init__()
     def forward(self, x):
         pass
+
+class P2ECDEC(nn.Module):
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, decoder: nn.Module):
+        super(P2ECDEC, self).__init__()
+        self.encoder = P2Encoder(input_channels, input_width, input_height, d_model)
+        self.decoder = decoder()
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
 if __name__ == "__main__":
     # Example usage
