@@ -102,6 +102,15 @@ class P2Encoder(nn.Module):
         return x
 
 
+class P2DecoderCrossAttention(nn.Module):
+    '''
+        The cross attention layer of the decoder allows the decoder to attend to the encoder output, that is add contextual about the image to the text.
+    '''
+    def __init__(self):
+        raise NotImplementedError("Cross attention layer is not implemented yet")
+
+    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
+        raise NotImplementedError("Cross attention layer is not implemented yet")
 class P2GPTBlock(GPT2Model):
     '''
         The GPT block of the decoder is very similar to a GPT-2, with addition of a cross attention layer and decoupled embedding/de-embedding MLPs,
