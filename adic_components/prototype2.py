@@ -73,6 +73,7 @@ class P2Encoder(nn.Module):
 
         x = x.view(batch_size, -1)
         x = self.fc1(x)
+        return x
 
 class P2Decoder(nn.Module):
     def __init__(self):
