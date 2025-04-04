@@ -74,8 +74,8 @@ class P2Encoder(nn.Module):
         x = x.view(batch_size, -1)
         x = self.fc1(x)
 
-   class P2Decoder(nn.Module):
-        def __init__(self):
-            super(P2Decoder, self).__init__()
-        def forward(self, x):
-            pass
+class P2Decoder(nn.Module):
+    def __init__(self):
+        super(P2Decoder, self).__init__()
+    def forward(self, x):
+        pass
