@@ -110,7 +110,7 @@ if __name__ == "__main__":
     # Example usage
     encoder = P2Encoder(input_channels=3, input_width=224, input_height=224, d_model=768)
     # Create a random input tensor
-    x = torch.randn(32, 3, 224, 224)  # (batch_size, channels, height, width)
+    x = torch.randn(32, 3, 24, 224)  # (batch_size, channels, height, width)
 
     # Forward pass through the encoder
     encoded_x = encoder(x)
