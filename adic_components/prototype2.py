@@ -1,7 +1,7 @@
 from typing import Optional
 import torch
 from torch import nn
-from transformers import GPT2Model
+from transformers import GPT2Model, GPT2Config
 class P2EncoderGluer(nn.Module):
     '''
         Adjusts the output of the encoder to be compatible with the decoder.
@@ -107,8 +107,8 @@ class P2GPTBlock(GPT2Model):
         The GPT block of the decoder is very similar to a GPT-2, with addition of a cross attention layer and decoupled embedding/de-embedding MLPs,
         this is done to allow fine-tuning of the model without touching the self-attention weights.
     '''
-    def __init__(self, d_model: int):
-        super(P2GPTBlock, self).__init__()
+    def __init__(self, config: GPT2Config):
+        super(P2GPTBlock, self).__init__(config=config)
 
     def forward(self, input_ids: Optional[torch.LongTensor], **kwargs):
         '''
@@ -119,6 +119,7 @@ class P2GPTBlock(GPT2Model):
         '''
         output = super().forward(input_ids, **kwargs)
         return output
+
 class P2Decoder(nn.Module):
     def __init__(self):
         super(P2Decoder, self).__init__()
