@@ -1,6 +1,27 @@
 import torch
 from torch import nn
 
+class P2EncoderGluer(nn.Module):
+    '''
+        Adjusts the output of the encoder to be compatible with the decoder.
+    '''
+    def __init__(self, encoder_token_dim: int, encoder_seq_length: int, decoder_token_dim: int):
+        super(P2EncoderGluer, self).__init__()
+        self.proj = nn.Linear(encoder_token_dim, decoder_token_dim)
+        self.positional_encoding = nn.Parameter(torch.randn(1, encoder_seq_length, decoder_token_dim))
+
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            x: The input tensor of shape (batch_size, encoder_token_dim)
+        Returns:
+            A tensor of shape (batch_size, decoder_token_dim) containing the embeddings
+        '''
+        x = self.proj(x)
+        x = x + self.positional_encoding
+        return x
+
 class P2Encoder(nn.Module):
     '''Encoder for the second prototype.
     This time I'm trying to use a normal CNN to generate the embeddings.
@@ -19,6 +40,11 @@ class P2Encoder(nn.Module):
         assert input_height % 16 == 0, "Input height must be a multiple of 16"
         super(P2Encoder, self).__init__()
         self.d_model = d_model
+        # derive sequence length from input dimensions
+        self.seq_length = (input_width // 16) * (input_height // 16)
+        self.input_channels = input_channels
+        self.input_width = input_width
+        self.input_height = input_height
         # CNN layers
         self.conv1_1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=1, padding=1)
         self.conv2_1 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
@@ -43,8 +69,7 @@ class P2Encoder(nn.Module):
         self.bn_res3 = nn.BatchNorm2d(256)
         self.bn_res4 = nn.BatchNorm2d(512)
 
-        # Fully connected layer
-        self.fc1 = nn.Linear(512 * (input_width // 16) * (input_height // 16), d_model)
+        self.gluer = P2EncoderGluer(512, self.seq_length, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -53,7 +78,6 @@ class P2Encoder(nn.Module):
         Returns:
             A tensor of shape (batch_size, d_model) containing the embeddings
         '''
-        batch_size = x.size(0)
 
         identity = self.bn_res1(self.identity1(x))
         x = self.pool(self.bn1(self.conv1_1(x)))
@@ -71,8 +95,9 @@ class P2Encoder(nn.Module):
         x = self.pool(self.bn4(self.conv4_1(x)))
         x = x + identity
 
-        x = x.view(batch_size, -1)
-        x = self.fc1(x)
+        B, C, H, W = x.shape
+        x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, seq_length, d_model)
+        x = self.gluer(x)
         return x
 
 class P2Decoder(nn.Module):
@@ -80,3 +105,13 @@ class P2Decoder(nn.Module):
         super(P2Decoder, self).__init__()
     def forward(self, x):
         pass
+
+if __name__ == "__main__":
+    # Example usage
+    encoder = P2Encoder(input_channels=3, input_width=224, input_height=224, d_model=768)
+    # Create a random input tensor
+    x = torch.randn(32, 3, 224, 224)  # (batch_size, channels, height, width)
+
+    # Forward pass through the encoder
+    encoded_x = encoder(x)
+    print("Encoded shape:", encoded_x.shape)
