@@ -343,6 +343,7 @@ class P2Decoder(nn.Module):
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
+        self.cross_attention_norm = nn.LayerNorm(self.hidden_size)
         # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
         # but then we can't fine-tune the model without touching the self-attention weights
         # so we use a separate embedding layer for the output
@@ -360,7 +361,8 @@ class P2Decoder(nn.Module):
         logger.trace("Encoder output shape: {}", encoder_output.shape)
         x = self.gpt2(x).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         logger.trace("Decoder output shape: {}", x.shape)
-        x = self.cross_attention(x, encoder_output)
+        x = self.cross_attention(x, encoder_output) + x
+        x = self.cross_attention_norm(x)
         logger.trace("Cross attention output shape: {}", x.shape)
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
