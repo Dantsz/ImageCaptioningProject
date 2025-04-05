@@ -390,7 +390,6 @@ class P2ECDEC(nn.Module):
             # get the last token
             x = torch.argmax(x[:, -1, :], dim=1).unsqueeze(0)
             tokens = torch.cat([tokens, x], dim=1).contiguous()
-            print(f'tokens shape: {tokens.shape}')
         return tokens
 
 if __name__ == "__main__":
