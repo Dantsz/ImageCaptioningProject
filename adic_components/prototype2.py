@@ -1,5 +1,5 @@
 import torch
-from DyT import DyT
+from adic_components.DyT import DyT
 from typing import Optional, Tuple, Union
 from torch import nn
 from transformers import GPT2Model, GPT2Config
