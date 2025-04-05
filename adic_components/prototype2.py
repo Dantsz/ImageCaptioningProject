@@ -379,17 +379,18 @@ class P2ECDEC(nn.Module):
         x = self.decoder(tokens, x, attention_mask=attention_mask)
         return x
 
-    def generate(self, images: torch.Tensor, max_lenght: int = 16) -> torch.Tensor:
+    def generate(self, images: torch.Tensor, max_length: int = 16) -> torch.Tensor:
         batch_size = images.shape[0]
         assert batch_size == 1, "Batch size must be 1 for generation, currently"
         tokens = torch.ones(1, 1).long().to(images.device) * self.decoder.gpt2.config.bos_token_id
-        #squeze the batch
-        while tokens.shape[1] < max_lenght or tokens[0, -1] != self.decoder.gpt2.config.eos_token_id:
+        while tokens.shape[1] < max_length:
             # get the last token and pass it to the decoder
             x = self.forward(tokens, images)
             # get the last token
             x = torch.argmax(x[:, -1, :], dim=1).unsqueeze(0)
             tokens = torch.cat([tokens, x], dim=1).contiguous()
+            if tokens[0, -1] == self.decoder.gpt2.config.eos_token_id:
+                break
         return tokens
 
 if __name__ == "__main__":
