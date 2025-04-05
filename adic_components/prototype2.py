@@ -1,11 +1,10 @@
 import torch
-from adic_components.DyT import DyT
+import copy
 from typing import Optional, Tuple, Union
 from torch import nn
 from transformers import GPT2Model, GPT2Config
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa, _prepare_4d_attention_mask_for_sdpa
-from torch.nn import functional as F
 from loguru import logger
 class P2EncoderGluer(nn.Module):
     '''
@@ -14,7 +13,6 @@ class P2EncoderGluer(nn.Module):
     def __init__(self, encoder_token_dim: int, encoder_seq_length: int, decoder_token_dim: int):
         super(P2EncoderGluer, self).__init__()
         self.proj = nn.Linear(encoder_token_dim, decoder_token_dim)
-        self.dropout = nn.Dropout(0.1)
         self.positional_encoding = nn.Parameter(torch.randn(1, encoder_seq_length, decoder_token_dim))
 
 
@@ -25,12 +23,9 @@ class P2EncoderGluer(nn.Module):
         Returns:
             A tensor of shape (batch_size, decoder_token_dim) containing the embeddings
         '''
-        residual = x
         x = self.proj(x)
-        x = self.dropout(x)
-        x = F.relu(x)
         x = x + self.positional_encoding
-        return x + residual
+        return x
 
 class P2Encoder(nn.Module):
     '''Encoder for the second prototype.
@@ -59,27 +54,27 @@ class P2Encoder(nn.Module):
         self.conv1_1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=1, padding=1)
         self.conv2_1 = nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1)
         self.conv3_1 = nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1)
-        self.conv4_1 = nn.Conv2d(256, 768, kernel_size=3, stride=1, padding=1)
+        self.conv4_1 = nn.Conv2d(256, 512, kernel_size=3, stride=1, padding=1)
 
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
         self.bn1 = nn.BatchNorm2d(64)
         self.bn2 = nn.BatchNorm2d(128)
         self.bn3 = nn.BatchNorm2d(256)
-        self.bn4 = nn.BatchNorm2d(768)
+        self.bn4 = nn.BatchNorm2d(512)
 
         # Residual connections
         self.identity1 = nn.Conv2d(input_channels, 64, kernel_size=1, stride=2, padding=0)
         self.identity2 = nn.Conv2d(64, 128, kernel_size=1, stride=2, padding=0)
         self.identity3 = nn.Conv2d(128, 256, kernel_size=1, stride=2, padding=0)
-        self.identity4 = nn.Conv2d(256, 768, kernel_size=1, stride=2, padding=0)
+        self.identity4 = nn.Conv2d(256, 512, kernel_size=1, stride=2, padding=0)
 
         # Batch normalization layers for the residuals
         self.bn_res1 = nn.BatchNorm2d(64)
         self.bn_res2 = nn.BatchNorm2d(128)
         self.bn_res3 = nn.BatchNorm2d(256)
-        self.bn_res4 = nn.BatchNorm2d(768)
+        self.bn_res4 = nn.BatchNorm2d(512)
 
-        self.gluer = P2EncoderGluer(768, self.seq_length, d_model)
+        self.gluer = P2EncoderGluer(512, self.seq_length, d_model)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -118,7 +113,7 @@ class P2DecoderCrossAttention(nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int):
         super(P2DecoderCrossAttention, self).__init__()
         self.cross_attn = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, batch_first=True)
-        self.ln = DyT(embedding_dim)
+        self.ln = nn.LayerNorm(embedding_dim)#TODO: use the DyT instead of layer norm, this is frankly lame
 
     def forward(self, decoder_self_attention_output: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         x, _ = self.cross_attn(decoder_self_attention_output, encoder_output, encoder_output) # the second parameter returned is the attention weights, we don't need them, for now anyways, and hopefully never
@@ -348,7 +343,7 @@ class P2Decoder(nn.Module):
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
-        self.cross_attention_norm = DyT(self.hidden_size)
+        self.cross_attention_norm = nn.LayerNorm(self.hidden_size)
         # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
         # but then we can't fine-tune the model without touching the self-attention weights
         # so we use a separate embedding layer for the output
