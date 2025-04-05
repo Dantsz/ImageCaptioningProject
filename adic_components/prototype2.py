@@ -348,9 +348,9 @@ class P2Decoder(nn.Module):
         # but then we can't fine-tune the model without touching the self-attention weights
         # so we use a separate embedding layer for the output
         self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
-        self.lm_head.weight = self.gpt2.wte.weight# TODO: figure out what the fuck this is!
+        self.lm_head.weight = nn.Parameter(self.gpt2.wte.weight.clone())
 
-    def forward(self, x, encoder_output):
+    def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None):
         # batch_size, seq_length, d_model = gpt2_output.shape
         x_shape = x.shape
         encoder_output_shape = encoder_output.shape
@@ -359,7 +359,7 @@ class P2Decoder(nn.Module):
         assert x_shape[0] == encoder_output_shape[0], f"Batch size mismatch: {x_shape[0]} != {encoder_output_shape[0]}"
         logger.trace("Decoder input shape: {}", x.shape)
         logger.trace("Encoder output shape: {}", encoder_output.shape)
-        x = self.gpt2(x).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
+        x = self.gpt2(x, attention_mask=attention_mask).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         logger.trace("Decoder output shape: {}", x.shape)
         x = self.cross_attention(x, encoder_output) + x
         x = self.cross_attention_norm(x)
@@ -374,9 +374,9 @@ class P2ECDEC(nn.Module):
         self.encoder = P2Encoder(input_channels, input_width, input_height, d_model)
         self.decoder = decoder
 
-    def forward(self, tokens: torch.Tensor, images: torch.Tensor) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, images: torch.Tensor, attention_mask: Optional[torch.FloatTensor] = None) -> torch.Tensor:
         x = self.encoder(images)
-        x = self.decoder(tokens, x)
+        x = self.decoder(tokens, x, attention_mask=attention_mask)
         return x
 
 if __name__ == "__main__":

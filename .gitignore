@@ -8,3 +8,5 @@ trained_model.pth
 experiments/
 cnnlab.ipynb
 data/
+graph
+graph.png
