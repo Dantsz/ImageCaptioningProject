@@ -75,6 +75,7 @@ class P2Encoder(nn.Module):
         self.bn_res4 = nn.BatchNorm2d(512)
 
         self.gluer = P2EncoderGluer(512, self.seq_length, d_model)
+        self.act = nn.LeakyReLU()
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         '''
@@ -85,19 +86,19 @@ class P2Encoder(nn.Module):
         '''
 
         identity = self.bn_res1(self.identity1(x))
-        x = self.pool(self.bn1(self.conv1_1(x)))
+        x = self.pool(self.act(self.bn1(self.conv1_1(x))))
         x = x + identity
 
         identity = self.bn_res2(self.identity2(x))
-        x = self.pool(self.bn2(self.conv2_1(x)))
+        x = self.pool(self.act(self.bn2(self.conv2_1(x))))
         x = x + identity
 
         identity = self.bn_res3(self.identity3(x))
-        x = self.pool(self.bn3(self.conv3_1(x)))
+        x = self.pool(self.act(self.bn3(self.conv3_1(x))))
         x = x + identity
 
         identity = self.bn_res4(self.identity4(x))
-        x = self.pool(self.bn4(self.conv4_1(x)))
+        x = self.pool(self.act(self.bn4(self.conv4_1(x))))
         x = x + identity
 
         B, C, H, W = x.shape
