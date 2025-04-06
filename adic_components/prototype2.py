@@ -115,12 +115,9 @@ class P2DecoderCrossAttention(nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int):
         super(P2DecoderCrossAttention, self).__init__()
         self.cross_attn = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, batch_first=True)
-        self.ln = DyT(embedding_dim)#TODO: use the DyT instead of layer norm, this is frankly lame
 
     def forward(self, decoder_self_attention_output: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
-        residual = decoder_self_attention_output
         x, _ = self.cross_attn(decoder_self_attention_output, encoder_output, encoder_output) # the second parameter returned is the attention weights, we don't need them, for now anyways, and hopefully never
-        x = self.ln(x + residual)
         return x
 class P2GPTBlock(GPT2Model):
     '''
