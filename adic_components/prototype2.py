@@ -5,6 +5,7 @@ from torch import nn
 from transformers import GPT2Model, GPT2Config
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa, _prepare_4d_attention_mask_for_sdpa
+from adic_components.DyT import DyT
 from loguru import logger
 class P2EncoderGluer(nn.Module):
     '''
@@ -114,7 +115,7 @@ class P2DecoderCrossAttention(nn.Module):
     def __init__(self, embedding_dim: int, num_heads: int):
         super(P2DecoderCrossAttention, self).__init__()
         self.cross_attn = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, batch_first=True)
-        self.ln = nn.LayerNorm(embedding_dim)#TODO: use the DyT instead of layer norm, this is frankly lame
+        self.ln = DyT(embedding_dim)#TODO: use the DyT instead of layer norm, this is frankly lame
 
     def forward(self, decoder_self_attention_output: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         residual = decoder_self_attention_output
@@ -345,7 +346,7 @@ class P2Decoder(nn.Module):
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
-        self.cross_attention_norm = nn.LayerNorm(self.hidden_size)
+        self.cross_attention_norm = DyT(self.hidden_size)
         # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
         # but then we can't fine-tune the model without touching the self-attention weights
         # so we use a separate embedding layer for the output
