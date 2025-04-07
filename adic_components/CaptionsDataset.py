@@ -90,7 +90,8 @@ class CaptionDatasetTrain(Dataset):
         self.image_to_caption = {}
         for imgdata in annotations['annotations']:
             caption = imgdata['caption']
-            tokenized_caption = self.tokenizer(caption, truncation=False, padding=True,
+            tokenized_caption = self.tokenizer(caption, truncation=False, padding='max_length',
+                                               max_length=self.max_length,
                                                return_tensors="pt", add_special_tokens=True).input_ids
             length = tokenized_caption.shape[1]
             if length > self.max_length:
