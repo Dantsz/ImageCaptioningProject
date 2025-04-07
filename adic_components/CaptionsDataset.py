@@ -106,6 +106,7 @@ class CaptionDatasetTrain(Dataset):
 
             # Make sure all captions are padded up to max_length
             tokenized_caption = tokenized_caption.squeeze(0)  # Remove unnecessary batch dimension
+            assert tokenized_caption.shape == (self.max_length + 2,), f"Tokenized caption shape mismatch, expected {(self.max_length + 2,)}, got {tokenized_caption.shape}"
 
             self.captions.append((self.img_paths[id], tokenized_caption.to(self.output_device)))
             inserted_index = len(self.captions) - 1
