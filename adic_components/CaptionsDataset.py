@@ -66,13 +66,12 @@ class CaptionDatasetTrain(Dataset):
     """
         Dataset for training, with cached images and tokenized captions.
     """
-    def __init__(self, images_dir: str, json_path: str, transform=None, tokenizer=None, output_device=None, max_length=32):
+    def __init__(self, images_dir: str, json_path: str, transform=None, tokenizer=None, output_device=None):
         logger.trace("Initializing CaptionDataset, with images_dir: {}, json_path: {}", images_dir, json_path)
         self.images_dir = images_dir
         self.transform = transform
         self.tokenizer = tokenizer  # Now you have access to the tokenizer
         self.output_device = output_device
-        self.max_length = max_length  # Set a max length for padding only
         annotations = json.load(open(json_path, 'r'))
         self.img_paths = {}
         self.img_cache = {}
@@ -87,16 +86,19 @@ class CaptionDatasetTrain(Dataset):
 
         logger.trace("Loading captions")
         self.captions = []
+        self.max_length = None
         self.image_to_caption = {}
 
         for imgdata in annotations['annotations']:
             id = imgdata['image_id']
             caption = imgdata['caption']
             assert len(caption) > 0, "Caption is empty"
+            if self.max_length is None or len(caption) > self.max_length:
+                self.max_length = len(caption)
             assert id in self.img_paths, "Image ID not found in img_paths"
 
             # Tokenizing captions here with padding but not truncating
-            tokenized_caption = self.tokenizer(caption, padding='max_length', truncation=False,
+            tokenized_caption = self.tokenizer(caption, padding='max_length', truncation=False, padding=True,
                                                max_length=self.max_length, return_tensors="pt", add_special_tokens=True).input_ids
 
             # Add BOS and EOS tokens
@@ -104,11 +106,6 @@ class CaptionDatasetTrain(Dataset):
 
             # Make sure all captions are padded up to max_length
             tokenized_caption = tokenized_caption.squeeze(0)  # Remove unnecessary batch dimension
-
-            # Only pad if the tokenized caption is shorter than max_length
-            if tokenized_caption.size(0) < self.max_length:
-                padding_length = self.max_length - tokenized_caption.size(0)
-                tokenized_caption = torch.cat([tokenized_caption, torch.full((padding_length,), self.tokenizer.pad_token_id, dtype=tokenized_caption.dtype, device=tokenized_caption.device)])
 
             self.captions.append((self.img_paths[id], tokenized_caption.to(self.output_device)))
             inserted_index = len(self.captions) - 1
