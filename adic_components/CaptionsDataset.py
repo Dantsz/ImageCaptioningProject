@@ -66,12 +66,13 @@ class CaptionDatasetTrain(Dataset):
     """
         Dataset for training, with cached images and tokenized captions.
     """
-    def __init__(self, images_dir: str, json_path: str, transform=None, tokenizer=None, output_device=None):
+    def __init__(self, images_dir: str, json_path: str, transform=None, tokenizer=None, output_device=None, max_length=32):
         logger.trace("Initializing CaptionDataset, with images_dir: {}, json_path: {}", images_dir, json_path)
         self.images_dir = images_dir
         self.transform = transform
         self.tokenizer = tokenizer  # Now you have access to the tokenizer
         self.output_device = output_device
+        self.max_length = max_length  # Set a max length for padding only
         annotations = json.load(open(json_path, 'r'))
         self.img_paths = {}
         self.img_cache = {}
@@ -93,9 +94,21 @@ class CaptionDatasetTrain(Dataset):
             caption = imgdata['caption']
             assert len(caption) > 0, "Caption is empty"
             assert id in self.img_paths, "Image ID not found in img_paths"
-            # Tokenizing captions here
-            tokenized_caption = self.tokenizer(caption, padding=True, return_tensors="pt", add_special_tokens=True).input_ids
+
+            # Tokenizing captions here with padding but not truncating
+            tokenized_caption = self.tokenizer(caption, padding='max_length', truncation=False,
+                                               max_length=self.max_length, return_tensors="pt", add_special_tokens=True).input_ids
+
+            # Add BOS and EOS tokens
             tokenized_caption = self.add_bos_eos(tokenized_caption, self.tokenizer.bos_token_id, self.tokenizer.eos_token_id)
+
+            # Make sure all captions are padded up to max_length
+            tokenized_caption = tokenized_caption.squeeze(0)  # Remove unnecessary batch dimension
+
+            # Only pad if the tokenized caption is shorter than max_length
+            if tokenized_caption.size(0) < self.max_length:
+                padding_length = self.max_length - tokenized_caption.size(0)
+                tokenized_caption = torch.cat([tokenized_caption, torch.full((padding_length,), self.tokenizer.pad_token_id, dtype=tokenized_caption.dtype, device=tokenized_caption.device)])
 
             self.captions.append((self.img_paths[id], tokenized_caption.to(self.output_device)))
             inserted_index = len(self.captions) - 1
@@ -112,14 +125,13 @@ class CaptionDatasetTrain(Dataset):
         bos = torch.full((token_ids.size(0), 1), bos_token_id, dtype=token_ids.dtype, device=token_ids.device)
         eos = torch.full((token_ids.size(0), 1), eos_token_id, dtype=token_ids.dtype, device=token_ids.device)
         return torch.cat([bos, token_ids, eos], dim=1)
-
     def __getitem__(self, index):
         """
         Return the image and the tokenized caption.
         """
         img_path, tokenized_caption = self.captions[index]
         img = self.load_image(img_path)
-        return img, tokenized_caption.squeeze(0)  # Removing the batch dimension for the tokenized caption
+        return img, tokenized_caption # Removing the batch dimension for the tokenized caption
 
     def __len__(self):
         return len(self.captions)
