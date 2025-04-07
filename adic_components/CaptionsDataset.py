@@ -97,7 +97,7 @@ class CaptionDatasetTrain(Dataset):
             tokenized_caption = self.tokenizer(caption, padding=True, return_tensors="pt", add_special_tokens=True).input_ids
             tokenized_caption = self.add_bos_eos(tokenized_caption, self.tokenizer.bos_token_id, self.tokenizer.eos_token_id)
 
-            self.captions.append((self.img_paths[id], tokenized_caption).to(self.output_device))
+            self.captions.append((self.img_paths[id], tokenized_caption.to(self.output_device)))
             inserted_index = len(self.captions) - 1
             if id not in self.image_to_caption:
                 self.image_to_caption[id] = []
