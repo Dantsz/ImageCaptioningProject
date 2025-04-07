@@ -99,7 +99,7 @@ class CaptionDatasetTrain(Dataset):
 
             # Tokenizing captions here with padding but not truncating
             tokenized_caption = self.tokenizer(caption, padding='max_length', truncation=False, padding=True,
-                                               max_length=self.max_length, return_tensors="pt", add_special_tokens=True).input_ids
+                                               return_tensors="pt", add_special_tokens=True).input_ids
 
             # Add BOS and EOS tokens
             tokenized_caption = self.add_bos_eos(tokenized_caption, self.tokenizer.bos_token_id, self.tokenizer.eos_token_id)
