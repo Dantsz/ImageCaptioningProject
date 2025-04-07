@@ -96,6 +96,7 @@ class CaptionDatasetTrain(Dataset):
             if length > self.max_length:
                 self.max_length = length
 
+        logger.trace("Computed length of captions: {}", self.max_length)
         for imgdata in annotations['annotations']:
             id = imgdata['image_id']
             caption = imgdata['caption']
