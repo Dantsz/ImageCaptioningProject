@@ -90,9 +90,7 @@ class CaptionDatasetTrain(Dataset):
         self.image_to_caption = {}
         for imgdata in annotations['annotations']:
             caption = imgdata['caption']
-            tokenized_caption = self.tokenizer(caption, truncation=False, padding='max_length',
-                                               max_length=self.max_length,
-                                               return_tensors="pt", add_special_tokens=True).input_ids
+            tokenized_caption = self.tokenizer(caption, truncation=False, return_tensors="pt", add_special_tokens=True).input_ids
             length = tokenized_caption.shape[1]
             if length > self.max_length:
                 self.max_length = length
@@ -105,7 +103,8 @@ class CaptionDatasetTrain(Dataset):
             assert id in self.img_paths, "Image ID not found in img_paths"
 
             # Tokenizing captions here with padding but not truncating
-            tokenized_caption = self.tokenizer(caption, truncation=False, padding=True,
+            tokenized_caption = self.tokenizer(caption, truncation=False, padding=True,padding='max_length',
+                                               max_length=self.max_length,
                                                return_tensors="pt", add_special_tokens=True).input_ids
 
             # Add BOS and EOS tokens
@@ -113,7 +112,7 @@ class CaptionDatasetTrain(Dataset):
 
             # Make sure all captions are padded up to max_length
             tokenized_caption = tokenized_caption.squeeze(0)  # Remove unnecessary batch dimension
-            assert tokenized_caption.shape[0] == self.max_length + 2, f"Tokenized caption shape mismatch, expected {(self.max_length + 2,)}, got {tokenized_caption.shape}"
+            assert tokenized_caption.shape[0] == self.max_length + 2, f"Tokenized caption shape mismatch, expected {self.max_length + 2}, got {tokenized_caption.shape[0]}"
 
             self.captions.append((self.img_paths[id], tokenized_caption.to(self.output_device)))
             inserted_index = len(self.captions) - 1
