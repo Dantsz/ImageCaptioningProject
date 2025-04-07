@@ -86,7 +86,7 @@ class CaptionDatasetTrain(Dataset):
 
         logger.trace("Loading captions")
         self.captions = []
-        self.max_length = None
+        self.max_length = 0
         self.image_to_caption = {}
 
         for imgdata in annotations['annotations']:
@@ -112,7 +112,7 @@ class CaptionDatasetTrain(Dataset):
             if id not in self.image_to_caption:
                 self.image_to_caption[id] = []
             self.image_to_caption[id].append(inserted_index)
-
+        assert self.max_length > 0, "Max length is zero"
         logger.trace("Loaded {} captions", len(self.captions))
 
     def add_bos_eos(self, token_ids: torch.Tensor, bos_token_id: int, eos_token_id: int) -> torch.Tensor:
