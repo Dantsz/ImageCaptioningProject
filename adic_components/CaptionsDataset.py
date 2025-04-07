@@ -88,13 +88,18 @@ class CaptionDatasetTrain(Dataset):
         self.captions = []
         self.max_length = 0
         self.image_to_caption = {}
+        for imgdata in annotations['annotations']:
+            caption = imgdata['caption']
+            tokenized_caption = self.tokenizer(caption, truncation=False, padding=True,
+                                               return_tensors="pt", add_special_tokens=True).input_ids
+            length = tokenized_caption.shape[1]
+            if length > self.max_length:
+                self.max_length = length
 
         for imgdata in annotations['annotations']:
             id = imgdata['image_id']
             caption = imgdata['caption']
             assert len(caption) > 0, "Caption is empty"
-            if self.max_length is None or len(caption) > self.max_length:
-                self.max_length = len(caption)
             assert id in self.img_paths, "Image ID not found in img_paths"
 
             # Tokenizing captions here with padding but not truncating
@@ -106,7 +111,7 @@ class CaptionDatasetTrain(Dataset):
 
             # Make sure all captions are padded up to max_length
             tokenized_caption = tokenized_caption.squeeze(0)  # Remove unnecessary batch dimension
-            assert tokenized_caption.shape == (self.max_length + 2,), f"Tokenized caption shape mismatch, expected {(self.max_length + 2,)}, got {tokenized_caption.shape}"
+            assert tokenized_caption.shape[0] == self.max_length + 2, f"Tokenized caption shape mismatch, expected {(self.max_length + 2,)}, got {tokenized_caption.shape}"
 
             self.captions.append((self.img_paths[id], tokenized_caption.to(self.output_device)))
             inserted_index = len(self.captions) - 1
@@ -114,6 +119,7 @@ class CaptionDatasetTrain(Dataset):
                 self.image_to_caption[id] = []
             self.image_to_caption[id].append(inserted_index)
         assert self.max_length > 0, "Max length is zero"
+        self.max_length = self.max_length + 2  # Adding 2 for BOS and EOS tokens
         logger.trace("Loaded {} captions", len(self.captions))
 
     def add_bos_eos(self, token_ids: torch.Tensor, bos_token_id: int, eos_token_id: int) -> torch.Tensor:
