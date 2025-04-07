@@ -103,7 +103,7 @@ class CaptionDatasetTrain(Dataset):
             assert id in self.img_paths, "Image ID not found in img_paths"
 
             # Tokenizing captions here with padding but not truncating
-            tokenized_caption = self.tokenizer(caption, truncation=False, padding=True,padding='max_length',
+            tokenized_caption = self.tokenizer(caption, truncation=False, padding='max_length',
                                                max_length=self.max_length,
                                                return_tensors="pt", add_special_tokens=True).input_ids
 
