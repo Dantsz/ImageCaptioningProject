@@ -12,3 +12,4 @@ graph
 graph.png
 best_proto2.pth
 prototype2_release.pth
+checkpoint.pth

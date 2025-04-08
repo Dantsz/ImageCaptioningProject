@@ -15,3 +15,5 @@ ipywidgets==7.7.1
 transformers
 pycocotools
 loguru
+evaluate
+nltk
