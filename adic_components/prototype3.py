@@ -1,0 +1,153 @@
+from typing import Optional
+from torch import nn
+from adic_components.prototype2 import P2EncoderGluer
+from torchvision.ops import SqueezeExcitation
+import torch
+class P3EncoderBlock(nn.Module):
+    def __init__(self, in_channels: int, hidden_size:int, stride:int = 1, squeeze_channels: int = 16, expansion_factor: int = 4):
+        '''
+        Args:
+            in_channels: The number of input channels
+            hidden_size: The inner size of the convolution
+            stride: The stride of the convolution
+            squeeze_channels: The number of channels to squeeze to
+            expansion_factor: How much to multiply the hidden size (the one after the downsampling) by to output
+        '''
+        super(P3EncoderBlock, self).__init__()
+        self.in_channels = in_channels
+        self.hidden_size = hidden_size
+        self.stride = stride
+        self.conv1 = nn.Conv2d(in_channels, hidden_size, kernel_size=1, bias=False)# no need for bias because we use batch norm
+        self.bn1 = nn.BatchNorm2d(hidden_size)
+
+        self.conv2 = nn.Conv2d(hidden_size, hidden_size, kernel_size=3, stride=stride, padding=1, bias=False)
+        self.bn2 = nn.BatchNorm2d(hidden_size)
+
+        self.conv3 = nn.Conv2d(hidden_size, hidden_size * expansion_factor, kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(hidden_size * expansion_factor)
+        self.se = SqueezeExcitation(hidden_size * expansion_factor, squeeze_channels)
+        self.act = nn.ReLU(inplace=True)
+
+        if stride != 1:
+            self.downsample_identity = nn.Sequential(
+                nn.Conv2d(in_channels, hidden_size * expansion_factor, kernel_size=1, stride=stride, bias=False),
+                nn.BatchNorm2d(hidden_size * expansion_factor)
+            )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        indentity = x
+        x = self.act(self.bn1(self.conv1(x)))
+        x = self.act(self.bn2(self.conv2(x)))
+        x = self.bn3(self.conv3(x))
+        x = self.se(x)
+        if self.stride == 1:
+            x += indentity
+        else:
+            indentity = self.downsample_identity(indentity)
+            x += indentity
+        x = self.act(x)
+        return x
+
+class P3Encoder(nn.Module):
+    '''
+    Third encoder, second CNN encoder, which is used to encode the input image into a sequence of embeddings.
+    https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py helped
+    '''
+
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16):
+        '''
+        Args:
+            intput_channels: The number of input channels (e.g., 3 for RGB images)
+            input_width: The width of the input image
+            input_height: The height of the input image
+            d_model: The dimension of the model embeddings, which should be the same as the input embeddings of the decoder
+            expansion_factor: The expansion factor for subsequent blocks
+        '''
+        assert input_channels == 3 or input_channels == 1, "Currently only RGB or Grayscale images are supported"
+        assert input_width % 16 == 0, "Input width must be a multiple of 16"
+        assert input_height % 16 == 0, "Input height must be a multiple of 16"
+        super(P3Encoder, self).__init__()
+        self.d_model = d_model
+        self.expansion_factor = expansion_factor
+        self.squeeze_channels = squeeze_channels
+        # derive sequence length from input dimensions
+        self.seq_length = (input_width // 16) * (input_height // 16)
+        self.input_channels = input_channels
+        self.input_width = input_width
+        self.input_height = input_height
+        # CNN blocks
+        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layer1 = self._make_layer(6, 64, 32)
+        self.layer2 = self._make_layer(16, 128, 64)
+        self.layer3 = self._make_layer(64, 256, 128)
+
+        self.gluer = P2EncoderGluer(512, self.seq_length, d_model)
+        self.act = nn.ReLU()
+
+    def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
+        '''
+        Args:
+            blocks: The number of blocks to make
+            in_channels: The number of input channels
+            hidden_size: The inner size of the convolution
+        '''
+        layers = []
+        layers.append(P3EncoderBlock(in_channels, hidden_size, expansion_factor=self.expansion_factor, squeeze_channels=self.squeeze_channels, stride=2))
+        for _ in range(blocks - 1):
+            # hidden_size * self.expansion_factor as input means the number of channels does not modify when goign through these blocks
+            layers.append(P3EncoderBlock(hidden_size * self.expansion_factor, hidden_size, expansion_factor=self.expansion_factor, squeeze_channels=self.squeeze_channels, stride=1))
+        return nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        '''
+        Args:
+            x: The input tensor of shape (batch_size, input_channels, input_width, input_height)
+        Returns:
+            A tensor of shape (batch_size, d_model) containing the embeddings
+        '''
+        x = self.act(self.bn1(self.conv1(x)))
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+
+        B, C, H, W = x.shape
+        x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_modela, this is how the input to cross attention should look like
+        x = self.gluer(x)
+        return x
+
+class P3ECDEC(nn.Module):
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, decoder: nn.Module):
+        super(P3ECDEC, self).__init__()
+        self.encoder = P3Encoder(input_channels, input_width, input_height, d_model)
+        self.decoder = decoder
+
+    def forward(self, tokens: torch.Tensor, images: torch.Tensor, attention_mask: Optional[torch.FloatTensor] = None) -> torch.Tensor:
+        x = self.encoder(images)
+        x = self.decoder(tokens, x, attention_mask=attention_mask)
+        return x
+
+    def generate(self, images: torch.Tensor, max_length: int = 16) -> torch.Tensor:
+        batch_size = images.shape[0]
+        assert batch_size == 1, "Batch size must be 1 for generation, currently"
+        tokens = torch.ones(1, 1).long().to(images.device) * self.decoder.gpt2.config.bos_token_id
+        while tokens.shape[1] < max_length:
+            # get the last token and pass it to the decoder
+            x = self.forward(tokens, images)
+            # get the last token
+            x = torch.argmax(x[:, -1, :], dim=1).unsqueeze(0)
+            tokens = torch.cat([tokens, x], dim=1).contiguous()
+            if tokens[0, -1] == self.decoder.gpt2.config.eos_token_id:
+                break
+        return tokens
+
+if __name__ == "__main__":
+    print(f'P3 Encoder has: {sum(p.numel() for p in P3Encoder(3, 224, 224, 768).parameters())} parameters')
+    # Example usage
+    encoder = P3Encoder(input_channels=3, input_width=224, input_height=224, d_model=768)
+    # Create a random input tensor
+    x = torch.randn(5, 3, 224, 224)  # (batch_size, channels, height, width)
+
+    # Forward pass through the encoder
+    encoded_x = encoder(x)
+    print("Encoded shape:", encoded_x.shape)
