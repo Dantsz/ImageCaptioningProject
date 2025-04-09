@@ -13,7 +13,14 @@ class P2EncoderGluer(nn.Module):
     '''
     def __init__(self, encoder_token_dim: int, encoder_seq_length: int, decoder_token_dim: int):
         super(P2EncoderGluer, self).__init__()
-        self.proj = nn.Linear(encoder_token_dim, decoder_token_dim)
+        self.mlp = nn.Sequential(nn.Linear(encoder_token_dim, decoder_token_dim),
+                                 nn.GELU(),
+                                 nn.Dropout(0.1),
+                                 nn.Linear(decoder_token_dim, decoder_token_dim*4),
+                                 nn.GELU(),
+                                 nn.Dropout(0.1),
+                                 nn.Linear(decoder_token_dim*4, decoder_token_dim),
+                                )
         self.positional_encoding = nn.Parameter(torch.randn(1, encoder_seq_length, decoder_token_dim))
 
 
@@ -24,7 +31,7 @@ class P2EncoderGluer(nn.Module):
         Returns:
             A tensor of shape (batch_size, decoder_token_dim) containing the embeddings
         '''
-        x = self.proj(x)
+        x = self.mlp(x)
         x = x + self.positional_encoding
         return x
 
@@ -343,10 +350,16 @@ class P2Decoder(nn.Module):
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
-        self.cross_attention_norm = DyT(self.hidden_size)
+        self.norm = DyT(self.hidden_size)
         # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
         # but then we can't fine-tune the model without touching the self-attention weights
         # so we use a separate embedding layer for the output
+        self.mlp = nn.Sequential(
+            nn.Linear(self.hidden_size, self.hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(0.1),
+            nn.Linear(self.hidden_size * 4, self.hidden_size),
+        )
         self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
         self.lm_head.weight = nn.Parameter(self.gpt2.wte.weight.clone())
 
@@ -362,8 +375,9 @@ class P2Decoder(nn.Module):
         x = self.gpt2(x, attention_mask=attention_mask).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         logger.trace("Decoder output shape: {}", x.shape)
         x = self.cross_attention(x, encoder_output) + x
-        x = self.cross_attention_norm(x)
+        x = self.norm(x)
         logger.trace("Cross attention output shape: {}", x.shape)
+        x = self.norm(self.mlp(x)) + x # DyT and Norm
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
         return x
