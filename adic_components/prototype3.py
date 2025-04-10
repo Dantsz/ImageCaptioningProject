@@ -78,9 +78,9 @@ class P3Encoder(nn.Module):
         # CNN blocks
         self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(6, 64, 32)
-        self.layer2 = self._make_layer(16, 128, 64)
-        self.layer3 = self._make_layer(64, 256, 128)
+        self.layer1 = self._make_layer(3, 64, 32)
+        self.layer2 = self._make_layer(8, 128, 64)
+        self.layer3 = self._make_layer(32, 256, 128)
 
         self.gluer = P2EncoderGluer(512, self.seq_length, d_model)
         self.act = nn.ReLU()
