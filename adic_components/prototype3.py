@@ -82,7 +82,7 @@ class P3Encoder(nn.Module):
         self.layer2 = self._make_layer(8, 128, 64)
         self.layer3 = self._make_layer(32, 256, 128)
 
-        self.gluer = P2EncoderGluer(512, self.seq_length, d_model)
+        self.gluer = P2EncoderGluer(512, self.seq_length, d_model, dropout=0.3)
         self.act = nn.ReLU()
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):

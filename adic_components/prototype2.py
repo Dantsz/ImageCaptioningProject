@@ -11,14 +11,14 @@ class P2EncoderGluer(nn.Module):
     '''
         Adjusts the output of the encoder to be compatible with the decoder.
     '''
-    def __init__(self, encoder_token_dim: int, encoder_seq_length: int, decoder_token_dim: int):
+    def __init__(self, encoder_token_dim: int, encoder_seq_length: int, decoder_token_dim: int, dropout: float = 0.1):
         super(P2EncoderGluer, self).__init__()
         self.mlp = nn.Sequential(nn.Linear(encoder_token_dim, decoder_token_dim),
                                  nn.GELU(),
-                                 nn.Dropout(0.1),
+                                 nn.Dropout(dropout),
                                  nn.Linear(decoder_token_dim, decoder_token_dim*4),
                                  nn.GELU(),
-                                 nn.Dropout(0.1),
+                                 nn.Dropout(dropout),
                                  nn.Linear(decoder_token_dim*4, decoder_token_dim),
                                 )
         self.positional_encoding = nn.Parameter(torch.randn(1, encoder_seq_length, decoder_token_dim))
@@ -344,7 +344,7 @@ class P2GPTBlock(GPT2Model):
         )
 
 class P2Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config):
+    def __init__(self, gpt2_config: GPT2Config, lm_dropout: float = 0.3):
         super(P2Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
@@ -357,7 +357,7 @@ class P2Decoder(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size * 4),
             nn.GELU(),
-            nn.Dropout(0.1),
+            nn.Dropout(lm_dropout),
             nn.Linear(self.hidden_size * 4, self.hidden_size),
         )
         self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
