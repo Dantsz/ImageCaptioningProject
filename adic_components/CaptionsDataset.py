@@ -94,6 +94,7 @@ class CaptionDatasetEager(Dataset):
             assert len(caption) > 0, "Caption is empty"
             tokenized_captions = tokenizer(caption, padding=True, return_tensors="pt", add_special_tokens=True).input_ids
             tokenized_captions = add_bos_eos(tokenized_captions, tokenizer.bos_token_id, tokenizer.eos_token_id)
+            tokenized_captions = tokenized_captions.squeeze(0)
             assert id in self.img_paths, "Image ID not found in img_paths"
             self.captions.append((self.img_paths[id], tokenized_captions))
             inserted_index = len(self.captions) - 1
