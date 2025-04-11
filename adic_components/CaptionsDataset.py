@@ -77,7 +77,6 @@ class CaptionDatasetEager(Dataset):
         self.transform = transform
         annotations = json.load(open(json_path, 'r'))
         self.img_paths = {}
-        self.img_cache = {}
         logger.trace("Loading annotations from {}", json_path)
         logger.trace("Loading images")
         for imgdata in annotations['images']:
@@ -111,14 +110,7 @@ class CaptionDatasetEager(Dataset):
         return len(self.captions)
 
     def load_image(self, img_path):
-        logger.trace("Loading image from {}", img_path)
-        if img_path in self.img_cache:
-            logger.trace("Image found in cache")
-            return self.img_cache[img_path]
-        else:
-            logger.trace("Image not found in cache, loading from disk")
-            img = Image.open(img_path).convert('RGB')
-            if self.transform is not None:
-                img = self.transform(img)
-            self.img_cache[img_path] = img
-            return img
+        img = Image.open(img_path).convert('RGB')
+        if self.transform is not None:
+            img = self.transform(img)
+        return img
