@@ -3,6 +3,10 @@ from torch import nn
 from adic_components.prototype2 import P2EncoderGluer
 from torchvision.ops import SqueezeExcitation
 import torch
+from loguru import logger
+from adic_components.prototype2 import P2GPTBlock, P2DecoderCrossAttention
+from transformers import GPT2Config
+from adic_components.DyT import DyT
 class P3EncoderBlock(nn.Module):
     def __init__(self, in_channels: int, hidden_size:int, stride:int = 1, squeeze_channels: int = 16, expansion_factor: int = 4):
         '''
@@ -116,6 +120,51 @@ class P3Encoder(nn.Module):
         x = self.gluer(x)
         return x
 
+class P3Decoder(nn.Module):
+    def __init__(self, gpt2_config: GPT2Config, lm_dropout: float = 0.3):
+        super(P3Decoder, self).__init__()
+        self.gpt2 = P2GPTBlock(gpt2_config)
+        self.hidden_size = gpt2_config.n_embd
+        self.vocab_size = gpt2_config.vocab_size
+        self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
+        self.norm = DyT(self.hidden_size)
+        # Adapter MLP for Q projection before cross-attention
+        self.query_adapter = nn.Sequential(
+            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.GELU(),
+            nn.Linear(self.hidden_size, self.hidden_size)
+        )
+        # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
+        # but then we can't fine-tune the model without touching the self-attention weights
+        # so we use a separate embedding layer for the output
+        self.mlp = nn.Sequential(
+            nn.Linear(self.hidden_size, self.hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(lm_dropout),
+            nn.Linear(self.hidden_size * 4, self.hidden_size),
+        )
+        self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
+        self.lm_head.weight = nn.Parameter(self.gpt2.wte.weight.clone())
+
+    def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None):
+        # batch_size, seq_length, d_model = gpt2_output.shape
+        x_shape = x.shape
+        encoder_output_shape = encoder_output.shape
+        assert len(x_shape) == 2, f"Input shape mismatch: {x_shape}, format should be (batch_size, seq_length)"
+        assert len(encoder_output_shape) == 3, f"Encoder output shape mismatch: {encoder_output_shape}, format should be (batch_size, seq_length, d_model)"
+        assert x_shape[0] == encoder_output_shape[0], f"Batch size mismatch: {x_shape[0]} != {encoder_output_shape[0]}"
+        logger.trace("Decoder input shape: {}", x.shape)
+        logger.trace("Encoder output shape: {}", encoder_output.shape)
+        x = self.gpt2(x, attention_mask=attention_mask).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
+        x = self.query_adapter(x) # this is the Q projection before cross-attention
+        logger.trace("Decoder output shape: {}", x.shape)
+        x = self.cross_attention(x, encoder_output) + x
+        x = self.norm(x)
+        logger.trace("Cross attention output shape: {}", x.shape)
+        x = self.norm(self.mlp(x)) + x # DyT and Norm
+        x = self.lm_head(x)
+        logger.trace("LM head output shape: {}", x.shape)
+        return x
 class P3ECDEC(nn.Module):
     def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, decoder: nn.Module):
         super(P3ECDEC, self).__init__()
