@@ -127,7 +127,8 @@ class P3Decoder(nn.Module):
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
-        self.norm = DyT(self.hidden_size)
+        self.norm1 = DyT(self.hidden_size)
+        self.norm2 = DyT(self.hidden_size)
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
@@ -159,9 +160,9 @@ class P3Decoder(nn.Module):
         x = self.query_adapter(x) # this is the Q projection before cross-attention
         logger.trace("Decoder output shape: {}", x.shape)
         x = self.cross_attention(x, encoder_output) + x
-        x = self.norm(x)
+        x = self.norm1(x)
         logger.trace("Cross attention output shape: {}", x.shape)
-        x = self.norm(self.mlp(x)) + x # DyT and Norm
+        x = self.norm2(self.mlp(x) + x) # Add and DyT
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
         return x
