@@ -120,20 +120,41 @@ class P3Encoder(nn.Module):
         x = self.gluer(x)
         return x
 
+class P3DecoderBlock(nn.Module):
+    def __init__(self, n_head: int, d_model: int, d_ff: int, dropout: float = 0.1):
+        super(P3DecoderBlock, self).__init__()
+        self.cross_attention = P2DecoderCrossAttention(n_head, d_model, dropout=dropout)
+        self.norm1 = DyT(d_model)
+        self.mlp = nn.Sequential(
+            nn.Linear(d_model, d_ff),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(d_ff, d_model),
+        )
+        self.norm2 = DyT(d_model)
+
+    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
+        residual = x
+        x = self.cross_attention(x, encoder_output) + x
+        x = self.norm1(x)
+        residual = x
+        x = self.mlp(x) + residual
+        x = self.norm2(x)
+        return x
+
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, lm_dropout: float = 0.15):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 4):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.cross_attention = P2DecoderCrossAttention(self.hidden_size, gpt2_config.n_head)# use the same number of heads as the GPT-2 model
-        self.norm1 = DyT(self.hidden_size)
         self.norm2 = DyT(self.hidden_size)
+        self.catt_blocks = nn.ModuleList([P3DecoderBlock(gpt2_config.n_head, self.hidden_size, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
             nn.GELU(),
-            nn.Dropout(lm_dropout),
+            nn.Dropout(dropout),
             nn.Linear(self.hidden_size, self.hidden_size)
         )
         # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
@@ -142,7 +163,7 @@ class P3Decoder(nn.Module):
         self.mlp = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size * 4),
             nn.GELU(),
-            nn.Dropout(lm_dropout),
+            nn.Dropout(dropout),
             nn.Linear(self.hidden_size * 4, self.hidden_size),
         )
         self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
@@ -160,8 +181,8 @@ class P3Decoder(nn.Module):
         x = self.gpt2(x, attention_mask=attention_mask).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         x = self.query_adapter(x) + x # this is the Q projection before cross-attention
         logger.trace("Decoder output shape: {}", x.shape)
-        x = self.cross_attention(x, encoder_output) + x
-        x = self.norm1(x)
+        for catt_block in self.catt_blocks:
+            x = catt_block(x, encoder_output)
         logger.trace("Cross attention output shape: {}", x.shape)
         x = self.norm2(self.mlp(x) + x) # Add and DyT
         x = self.lm_head(x)

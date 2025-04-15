@@ -119,9 +119,9 @@ class P2DecoderCrossAttention(nn.Module):
     '''
         The cross attention layer of the decoder allows the decoder to attend to the encoder output, that is add contextual about the image to the text.
     '''
-    def __init__(self, embedding_dim: int, num_heads: int):
+    def __init__(self, embedding_dim: int, num_heads: int, dropout: int = 0.1):
         super(P2DecoderCrossAttention, self).__init__()
-        self.cross_attn = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads, batch_first=True)
+        self.cross_attn = nn.MultiheadAttention(embed_dim=embedding_dim, num_heads=num_heads,dropout=dropout, batch_first=True)
 
     def forward(self, decoder_self_attention_output: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         x, _ = self.cross_attn(decoder_self_attention_output, encoder_output, encoder_output) # the second parameter returned is the attention weights, we don't need them, for now anyways, and hopefully never
