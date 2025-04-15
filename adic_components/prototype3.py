@@ -121,9 +121,9 @@ class P3Encoder(nn.Module):
         return x
 
 class P3DecoderBlock(nn.Module):
-    def __init__(self, n_head: int, d_model: int, d_ff: int, dropout: float = 0.1):
+    def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
-        self.cross_attention = P2DecoderCrossAttention(n_head, d_model, dropout=dropout)
+        self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
         self.norm1 = DyT(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
@@ -149,7 +149,7 @@ class P3Decoder(nn.Module):
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.norm2 = DyT(self.hidden_size)
-        self.catt_blocks = nn.ModuleList([P3DecoderBlock(gpt2_config.n_head, self.hidden_size, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
+        self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
