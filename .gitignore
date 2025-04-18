@@ -15,3 +15,4 @@ prototype2_release.pth
 checkpoint.pth
 prototype2_release3.pth
 *.pth
+dataset_subset.json
