@@ -1,3 +1,4 @@
+from warnings import deprecated
 from torch.utils.data import Dataset
 import json
 from loguru import logger
@@ -18,6 +19,7 @@ def add_bos_eos(token_ids: torch.Tensor, bos_token_id: int, eos_token_id: int) -
     eos = torch.full((token_ids.size(0), 1), eos_token_id, dtype=token_ids.dtype, device=token_ids.device)
     return torch.cat([bos, token_ids, eos], dim=1)
 
+@deprecated('Sucks, use CaptionDatasetEager for training and CaptionDatasetValidation for validation')
 class CaptionDataset(Dataset):
     def __init__(self, images_dir: str, json_path: str, transform=None):
         logger.trace("Initializing CaptionDataset, with images_dir: {}, json_path: {}", images_dir, json_path)
@@ -114,3 +116,56 @@ class CaptionDatasetEager(Dataset):
         if self.transform is not None:
             img = self.transform(img)
         return img
+
+class CaptionDatasetValidation(Dataset):
+    '''
+    Same as the eager, but also keeps the untoknenized captions, in order to compute the METEOR score.
+    '''
+    def __init__(self, images_dir: str, json_path: str, transform=None, tokenizer=None):
+        logger.trace("Initializing CaptionDataset, with images_dir: {}, json_path: {}", images_dir, json_path)
+        self.images_dir = images_dir
+        self.transform = transform
+        annotations = json.load(open(json_path, 'r'))
+        self.img_paths = {}
+        logger.trace("Loading annotations from {}", json_path)
+        logger.trace("Loading images")
+        for imgdata in annotations['images']:
+            id = imgdata['id']
+            path = os.path.join(self.images_dir, imgdata['file_name'])
+            self.img_paths[id] = path
+        logger.info("Loaded {} images", len(self.img_paths))
+        logger.trace("Loading captions")
+        self.captions = []
+        self.text_captions = []
+        self.image_to_caption = {}
+        for imgdata in annotations['annotations']:
+            id = imgdata['image_id']
+            caption = imgdata['caption']
+            assert len(caption) > 0, "Caption is empty"
+            tokenized_captions = tokenizer(caption, padding=True, return_tensors="pt", add_special_tokens=True).input_ids
+            tokenized_captions = add_bos_eos(tokenized_captions, tokenizer.bos_token_id, tokenizer.eos_token_id)
+            tokenized_captions = tokenized_captions.squeeze(0)
+            assert id in self.img_paths, "Image ID not found in img_paths"
+            self.captions.append((self.img_paths[id], tokenized_captions))
+            self.text_captions.append((self.img_paths[id], caption))
+            inserted_index = len(self.captions) - 1
+            if id not in self.image_to_caption:
+                self.image_to_caption[id] = []
+            self.image_to_caption[id].append(inserted_index)
+        assert len(self.captions) == len(self.text_captions), "Number of captions and text captions do not match"
+        logger.trace("Loaded {} captions", len(self.captions))
+
+    def __getitem__(self, index):
+        img_path, caption = self.captions[index]
+        img_transformed, img = self._load_image(img_path)
+        return img_transformed, caption, img, self.text_captions[index][1]
+
+    def __len__(self):
+        return len(self.captions)
+
+    def _load_image(self, img_path):
+        img = Image.open(img_path).convert('RGB')
+        img_transformed = None
+        if self.transform is not None:
+            img_transformed = self.transform(img)
+        return img_transformed, img
