@@ -1,4 +1,3 @@
-from warnings import deprecated
 from torch.utils.data import Dataset
 import json
 from loguru import logger
@@ -19,7 +18,6 @@ def add_bos_eos(token_ids: torch.Tensor, bos_token_id: int, eos_token_id: int) -
     eos = torch.full((token_ids.size(0), 1), eos_token_id, dtype=token_ids.dtype, device=token_ids.device)
     return torch.cat([bos, token_ids, eos], dim=1)
 
-@deprecated('Sucks, use CaptionDatasetEager for training and CaptionDatasetValidation for validation')
 class CaptionDataset(Dataset):
     def __init__(self, images_dir: str, json_path: str, transform=None):
         logger.trace("Initializing CaptionDataset, with images_dir: {}, json_path: {}", images_dir, json_path)
