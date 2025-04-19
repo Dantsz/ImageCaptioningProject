@@ -16,3 +16,4 @@ checkpoint.pth
 prototype2_release3.pth
 *.pth
 dataset_subset.json
+results.csv
