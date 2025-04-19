@@ -7,6 +7,7 @@ from loguru import logger
 from adic_components.prototype2 import P2GPTBlock, P2DecoderCrossAttention
 from transformers import GPT2Config
 from adic_components.DyT import DyT
+import torch.nn.functional as F
 class P3EncoderBlock(nn.Module):
     def __init__(self, in_channels: int, hidden_size:int, stride:int = 1, squeeze_channels: int = 16, expansion_factor: int = 4):
         '''
@@ -212,6 +213,63 @@ class P3ECDEC(nn.Module):
             if tokens[0, -1] == self.decoder.gpt2.config.eos_token_id:
                 break
         return tokens
+
+    def generate_with_beam_search(self, images: torch.Tensor, max_length: int = 25, beam_size: int = 5, temperature: float = 0.5) -> torch.Tensor:
+        batch_size = images.shape[0]
+        assert batch_size == 1, "Batch size must be 1 for generation, currently"
+
+        # Initial tokens (start with BOS token)
+        tokens = torch.ones(1, 1).long().to(images.device) * self.decoder.gpt2.config.bos_token_id
+
+        # Beam initialization: list of (tokens, score)
+        beams = [([self.decoder.gpt2.config.bos_token_id], 0.0)] * beam_size
+        finished = []
+
+        for _ in range(max_length):
+            all_candidates = []
+
+            for tokens, score in beams:
+                # Skip beams that are already finished (EOS token generated, which is same as BOS)
+                if len(tokens) > 1 and tokens[-1] == self.decoder.gpt2.config.bos_token_id:
+                    finished.append((tokens, score))
+                    continue
+
+                # Convert tokens to tensor and pass through the model
+                input_ids = torch.tensor(tokens, dtype=torch.long, device=images.device).unsqueeze(0)
+                logits = self.forward(input_ids, images)  # [batch_size, seq_len, vocab_size]
+
+                # Apply temperature to logits: divide by temperature
+                logits = logits[:, -1, :] / temperature  # Scale logits by temperature
+
+                # Apply log softmax to get log probabilities
+                log_probs = F.log_softmax(logits, dim=-1)
+
+                # Top-k candidates (beam_size candidates)
+                topk_log_probs, topk_ids = torch.topk(log_probs, beam_size)
+
+                # Generate new candidates by appending topk token ids
+                for log_prob, token_id in zip(topk_log_probs[0], topk_ids[0]):
+                    new_tokens = tokens + [token_id.item()]
+                    new_score = score + log_prob.item()  # Accumulate score (log-probability)
+                    all_candidates.append((new_tokens, new_score))
+
+            # Select the top beams based on their scores
+            beams = sorted(all_candidates, key=lambda x: x[1], reverse=True)[:beam_size]
+
+            # Stop early if all beams have finished (no tokens added after BOS)
+            if all(len(t[0]) > 1 and t[0][-1] == self.decoder.gpt2.config.bos_token_id for t in beams):
+                break
+
+        # Add any unfinished beams to the finished list
+        finished += [b for b in beams if len(b[0]) > 1 and b[0][-1] == self.decoder.gpt2.config.bos_token_id]
+
+        # Sort beams by their score and return the best one
+        finished = sorted(finished, key=lambda x: x[1], reverse=True)
+
+        # Return the best sequence (highest score)
+        best_tokens = finished[0][0] if finished else beams[0][0]
+        return torch.tensor(best_tokens).unsqueeze(0).to(images.device)
+
 
 if __name__ == "__main__":
     print(f'P3 Encoder has: {sum(p.numel() for p in P3Encoder(3, 224, 224, 768).parameters())} parameters')
