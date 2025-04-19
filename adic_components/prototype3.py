@@ -170,7 +170,7 @@ class P3Decoder(nn.Module):
         self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
         self.lm_head.weight = nn.Parameter(self.gpt2.wte.weight.clone())
 
-    def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None):
+    def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = False) -> torch.Tensor:
         # batch_size, seq_length, d_model = gpt2_output.shape
         x_shape = x.shape
         encoder_output_shape = encoder_output.shape
@@ -179,7 +179,7 @@ class P3Decoder(nn.Module):
         assert x_shape[0] == encoder_output_shape[0], f"Batch size mismatch: {x_shape[0]} != {encoder_output_shape[0]}"
         logger.trace("Decoder input shape: {}", x.shape)
         logger.trace("Encoder output shape: {}", encoder_output.shape)
-        x = self.gpt2(x, attention_mask=attention_mask).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
+        x = self.gpt2(x, attention_mask=attention_mask, use_cache=use_cache).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         x = self.query_adapter(x) + x # this is the Q projection before cross-attention
         logger.trace("Decoder output shape: {}", x.shape)
         for catt_block in self.catt_blocks:
@@ -195,9 +195,9 @@ class P3ECDEC(nn.Module):
         self.encoder = P3Encoder(input_channels, input_width, input_height, d_model)
         self.decoder = decoder
 
-    def forward(self, tokens: torch.Tensor, images: torch.Tensor, attention_mask: Optional[torch.FloatTensor] = None) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, images: torch.Tensor, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = None) -> torch.Tensor:
         x = self.encoder(images)
-        x = self.decoder(tokens, x, attention_mask=attention_mask)
+        x = self.decoder(tokens, x, attention_mask=attention_mask, use_cache=use_cache)
         return x
 
     def generate(self, images: torch.Tensor, max_length: int = 16) -> torch.Tensor:
@@ -214,7 +214,7 @@ class P3ECDEC(nn.Module):
                 break
         return tokens
 
-    def generate_with_beam_search(self, images: torch.Tensor, max_length: int = 25, beam_size: int = 5, temperature: float = 0.5) -> torch.Tensor:
+    def generate_with_beam_search(self, images: torch.Tensor, max_length: int = 25, beam_size: int = 5, temperature: float = 0.5, use_cache: Optional[bool] = True) -> torch.Tensor:
         batch_size = images.shape[0]
         assert batch_size == 1, "Batch size must be 1 for generation, currently"
 
@@ -236,7 +236,7 @@ class P3ECDEC(nn.Module):
 
                 # Convert tokens to tensor and pass through the model
                 input_ids = torch.tensor(tokens, dtype=torch.long, device=images.device).unsqueeze(0)
-                logits = self.forward(input_ids, images)  # [batch_size, seq_len, vocab_size]
+                logits = self.forward(input_ids, images, use_cache=use_cache)  # [batch_size, seq_len, vocab_size]
 
                 # Apply temperature to logits: divide by temperature
                 logits = logits[:, -1, :] / temperature  # Scale logits by temperature
