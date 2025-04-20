@@ -7,7 +7,7 @@ class DyT(nn.Module):
     '''
     DyT model inspired by the thorough pseudocode provided in the 'Transformers without Normalization' paper by FAIR.
     '''
-    def __init__(self, C, init_alpha=0.5):
+    def __init__(self, C, init_alpha=1):
         super(DyT, self).__init__()
         self.C = C
 
