@@ -13,6 +13,24 @@ default_transform = v2.Compose([
         v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
+augmentation_train_transform = v2.Compose([
+        v2.Resize(256),
+        v2.RandomResizedCrop((224, 224), pad_if_needed=True, padding_mode='symmetric'),
+        v2.RandomHorizontalFlip(),
+        v2.RandomRotation(10),
+        v2.RandomApply([v2.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0))], p=0.5),
+        v2.ColorJitter(brightness=0.2, contrast=0.2),
+        v2.ToTensor(),
+        v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+augmentation_test_transform = v2.Compose([
+        v2.Resize(256),
+        v2.CenterCrop((224, 224)),
+        v2.ToTensor(),
+        v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
 def add_bos_eos(token_ids: torch.Tensor, bos_token_id: int, eos_token_id: int) -> torch.Tensor:
     bos = torch.full((token_ids.size(0), 1), bos_token_id, dtype=token_ids.dtype, device=token_ids.device)
     eos = torch.full((token_ids.size(0), 1), eos_token_id, dtype=token_ids.dtype, device=token_ids.device)
