@@ -6,7 +6,6 @@ import torch
 from loguru import logger
 from adic_components.prototype2 import P2GPTBlock, P2DecoderCrossAttention
 from transformers import GPT2Config
-from adic_components.DyT import DyT
 import torch.nn.functional as F
 class P3EncoderBlock(nn.Module):
     def __init__(self, in_channels: int, hidden_size:int, stride:int = 1, squeeze_channels: int = 16, expansion_factor: int = 4):
@@ -125,14 +124,14 @@ class P3DecoderBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
-        self.norm1 = DyT(d_model)
+        self.norm1 = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
-        self.norm2 = DyT(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         residual = x
@@ -149,7 +148,7 @@ class P3Decoder(nn.Module):
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.norm2 = DyT(self.hidden_size)
+        self.norm2 = nn.LayerNorm(self.hidden_size)
         self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
@@ -185,7 +184,7 @@ class P3Decoder(nn.Module):
         for catt_block in self.catt_blocks:
             x = catt_block(x, encoder_output)
         logger.trace("Cross attention output shape: {}", x.shape)
-        x = self.norm2(self.mlp(x) + x) # Add and DyT
+        x = self.norm2(self.mlp(x) + x) # Add and Norm
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
         return x
