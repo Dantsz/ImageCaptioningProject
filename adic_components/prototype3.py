@@ -125,14 +125,14 @@ class P3DecoderBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
-        self.norm1 = DyT(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
-        self.norm2 = DyT(d_model)
+        self.norm1 = nn.LayerNorm(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         residual = x
