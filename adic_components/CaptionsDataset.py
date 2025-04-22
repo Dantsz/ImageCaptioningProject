@@ -6,6 +6,7 @@ from PIL import Image
 from torchvision.transforms import v2
 import torch
 from torch.nn.utils.rnn import pad_sequence
+from transformers import GPT2Tokenizer
 
 default_transform = v2.Compose([
         v2.Resize((224, 224)),
@@ -32,7 +33,9 @@ augmentation_test_transform = v2.Compose([
         v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
 
-def train_collate_fn(batch, tokenizer):
+default_tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+default_tokenizer.pad_token = default_tokenizer.eos_token
+def train_collate_fn(batch, tokenizer=default_tokenizer):
     """
     Custom collate function for training.
     Pads the captions within the batch to the maximum length of the batch.
@@ -49,7 +52,7 @@ def train_collate_fn(batch, tokenizer):
     captions = pad_sequence(list(captions), batch_first=True, padding_value=tokenizer.pad_token_id)
     return torch.stack(images), captions
 
-def test_collate_fn(batch, tokenizer):
+def test_collate_fn(batch, tokenizer=default_tokenizer):
     """
     Custom collate function for testing.
     Pads the captions within the batch to the maximum length of the batch, and returns the original images and captions as list.
