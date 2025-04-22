@@ -5,6 +5,7 @@ import os
 from PIL import Image
 from torchvision.transforms import v2
 import torch
+from torch.nn.utils.rnn import pad_sequence
 
 default_transform = v2.Compose([
         v2.Resize((224, 224)),
@@ -30,6 +31,40 @@ augmentation_test_transform = v2.Compose([
         v2.ToTensor(),
         v2.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
 ])
+
+def train_collate_fn(batch, tokenizer):
+    """
+    Custom collate function for training.
+    Pads the captions within the batch to the maximum length of the batch.
+
+    Args:
+        batch (_type_): batch of data from the dataset
+        tokenizer (_type_): tokenizer to use for padding the captions
+
+    Returns:
+        _type_: batch of images and padded caption
+    """
+    # pad_sequence pads to max length in batch
+    images, captions = zip(*batch)  # unzip the list of tuples
+    captions = pad_sequence(list(captions), batch_first=True, padding_value=tokenizer.pad_token_id)
+    return torch.stack(images), captions
+
+def test_collate_fn(batch, tokenizer):
+    """
+    Custom collate function for testing.
+    Pads the captions within the batch to the maximum length of the batch, and returns the original images and captions as list.
+
+    Args:
+        batch (_type_): batch of data from the dataset
+        tokenizer (_type_): tokenizer to use for padding the captions
+
+    Returns:
+        _type_: batch of: images, padded captions, original images, and original captions
+    """
+    # pad_sequence pads to max length in batch
+    images, captions, org_images, org_captions = zip(*batch)  # unzip the list of tuples
+    captions = pad_sequence(list(captions), batch_first=True, padding_value=tokenizer.pad_token_id)
+    return torch.stack(images), captions, org_images, org_captions
 
 def add_bos_eos(token_ids: torch.Tensor, bos_token_id: int, eos_token_id: int) -> torch.Tensor:
     bos = torch.full((token_ids.size(0), 1), bos_token_id, dtype=token_ids.dtype, device=token_ids.device)
