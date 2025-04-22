@@ -1,5 +1,6 @@
 from typing import Optional
 from torch import nn
+from adic_components.DyT import DyT
 from adic_components.prototype2 import P2EncoderGluer
 from torchvision.ops import SqueezeExcitation
 import torch
@@ -85,8 +86,9 @@ class P3Encoder(nn.Module):
         self.layer1 = self._make_layer(3, 64, 32)
         self.layer2 = self._make_layer(8, 128, 64)
         self.layer3 = self._make_layer(24, 256, 128)
+        self.layer4 = self._make_layer(32, 512, 192)# final output: 4 * 192 = 768
 
-        self.gluer = P2EncoderGluer(512, self.seq_length, d_model, dropout=0.3)
+        self.gluer = P2EncoderGluer(768, self.seq_length, d_model, dropout=0.3)
         self.act = nn.ReLU()
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
@@ -114,6 +116,7 @@ class P3Encoder(nn.Module):
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
+        x = self.layer4(x)
 
         B, C, H, W = x.shape
         x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_modela, this is how the input to cross attention should look like
@@ -124,14 +127,14 @@ class P3DecoderBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
-        self.norm1 = nn.LayerNorm(d_model)
+        self.norm1 = DyT(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
-        self.norm2 = nn.LayerNorm(d_model)
+        self.norm2 = DyT(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         residual = x
@@ -143,12 +146,12 @@ class P3DecoderBlock(nn.Module):
         return x
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 8):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 6):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.norm2 = nn.LayerNorm(self.hidden_size)
+        self.norm2 = DyT(self.hidden_size)
         self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
