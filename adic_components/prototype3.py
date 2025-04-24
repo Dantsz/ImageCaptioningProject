@@ -136,10 +136,13 @@ class P3DecoderBlock(nn.Module):
         )
         self.norm2 = DyT(d_model)
 
-    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
+    def forward(self, x: torch.Tensor, encoder_output: torch.Tensor, attention_mask = None) -> torch.Tensor:
         residual = x
         x = self.norm0(x)
-        x, _ = self.self_attention(x, x, x, is_causal=True) # self attention
+        if attention_mask is not None:
+            x, _ = self.self_attention(x, x, x, attn_mask=attention_mask, is_causal=True) # self attention
+        else:
+            x, _ = self.self_attention(x, x, x)
         x = x + residual
         residual = x
         x = self.norm1(x)
@@ -189,7 +192,7 @@ class P3Decoder(nn.Module):
         x = self.query_adapter(x) + x # this is the Q projection before cross-attention
         logger.trace("Decoder output shape: {}", x.shape)
         for catt_block in self.catt_blocks:
-            x = catt_block(x, encoder_output)
+            x = catt_block(x, encoder_output, attention_mask=attention_mask)
         logger.trace("Cross attention output shape: {}", x.shape)
         residual = x
         x = self.norm(x)
