@@ -191,8 +191,9 @@ class P3Decoder(nn.Module):
         for catt_block in self.catt_blocks:
             x = catt_block(x, encoder_output)
         logger.trace("Cross attention output shape: {}", x.shape)
+        residual = x
         x = self.norm(x)
-        x = self.mlp(x) + x
+        x = self.mlp(x) + residual
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
         return x
