@@ -83,9 +83,9 @@ class P3Encoder(nn.Module):
         # CNN blocks
         self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(6, 64, 32)
+        self.layer1 = self._make_layer(4, 64, 32)
         self.layer2 = self._make_layer(16, 128, 64)
-        self.layer3 = self._make_layer(48, 256, 192)
+        self.layer3 = self._make_layer(32, 256, 192)
 
         self.gluer = P2EncoderGluer(768, self.seq_length, d_model, dropout=0.3)
         self.act = nn.ReLU()
@@ -124,32 +124,38 @@ class P3Encoder(nn.Module):
 class P3DecoderBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
+        self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
+        self.norm0 = DyT(d_model)
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
-        self.norm1 = nn.LayerNorm(d_model)
+        self.norm1 = DyT(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
-        self.norm2 = nn.LayerNorm(d_model)
+        self.norm2 = DyT(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor) -> torch.Tensor:
         residual = x
-        x = self.cross_attention(x, encoder_output) + x
-        x = self.norm1(x)
+        x = self.norm0(x)
+        x, _ = self.self_attention(x, x, x, is_causal=True) # self attention
+        x = x + residual
         residual = x
-        x = self.mlp(x) + residual
+        x = self.norm1(x)
+        x = self.cross_attention(x, encoder_output) + x
+        residual = x
         x = self.norm2(x)
+        x = self.mlp(x) + residual
         return x
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 6):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 4):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.norm2 = nn.LayerNorm(self.hidden_size)
+        self.norm = DyT(self.hidden_size)
         self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
@@ -185,7 +191,8 @@ class P3Decoder(nn.Module):
         for catt_block in self.catt_blocks:
             x = catt_block(x, encoder_output)
         logger.trace("Cross attention output shape: {}", x.shape)
-        x = self.norm2(self.mlp(x) + x) # Add and Norm
+        x = self.norm(x)
+        x = self.mlp(x) + x
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
         return x
