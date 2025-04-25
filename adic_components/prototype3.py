@@ -152,28 +152,25 @@ class P3DecoderBlock(nn.Module):
         return x
 
 class LoRAdLMHead(nn.Module):
-    def __init__(self, lm_head: nn.Module, r: int = 4, alpha: float = 1.0, dropout: float = 0.0):
+    def __init__(self, lm_head: nn.Embedding, r: int = 4, alpha: float = 1.0, dropout: float = 0.0):
         super(LoRAdLMHead, self).__init__()
         self.lm_head = lm_head
         self.r = r
         self.aplha = alpha
         self.scale = alpha / r
-
-        self.lora_A = nn.Parameter(lm_head.in_features, r, bias=False)
-        self.lora_B = nn.Parameter(r, lm_head.out_features, bias=False)
+        d, vocab = lm_head.embedding_dim, lm_head.num_embeddings
+        self.lora_A = nn.Linear(d, r, bias=False)
+        self.lora_B = nn.Linear(r, vocab, bias=False)
         nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B.weight)
-
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
-
-        # freeze base layer
-        for param in self.base.parameters():
-            param.requires_grad = False
+        self.lm_head.weight.requires_grad = False
 
     def forward(self, x):
-        base_out = self.base(x)
+        base_out = F.linear(x, self.lm_head.weight)  # x: [B, T, D]
         lora_out = self.lora_B(self.lora_A(self.dropout(x))) * self.scaling
         return base_out + lora_out
+
 class P3Decoder(nn.Module):
     def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 3):
         super(P3Decoder, self).__init__()
@@ -198,7 +195,7 @@ class P3Decoder(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(self.hidden_size * 4, self.hidden_size),
         )
-        self.lm_head = LoRAdLMHead(self.gpt2.wte.weight, r=4, alpha=1.0, dropout=dropout)
+        self.lm_head = LoRAdLMHead(self.gpt2.wte, r=4, alpha=1.0, dropout=dropout)
 
     def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = False) -> torch.Tensor:
         # batch_size, seq_length, d_model = gpt2_output.shape
