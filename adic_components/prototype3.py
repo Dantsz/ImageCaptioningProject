@@ -168,7 +168,7 @@ class LoRAdLMHead(nn.Module):
 
     def forward(self, x):
         base_out = F.linear(x, self.lm_head.weight)  # x: [B, T, D]
-        lora_out = self.lora_B(self.lora_A(self.dropout(x))) * self.scaling
+        lora_out = self.lora_B(self.lora_A(self.dropout(x))) * self.scale
         return base_out + lora_out
 
 class P3Decoder(nn.Module):
