@@ -17,7 +17,7 @@ default_transform = v2.Compose([
 
 augmentation_train_transform = v2.Compose([
         v2.Resize(256),
-        v2.RandomResizedCrop((224, 224), scale=(0.25, 1.0)),
+        v2.RandomResizedCrop((224, 224), scale=(0.75, 1.0)),
         v2.RandomHorizontalFlip(),
         v2.RandomRotation(10),
         v2.RandomApply([v2.GaussianBlur(kernel_size=(3, 3), sigma=(0.1, 2.0))], p=0.5),
