@@ -1,5 +1,6 @@
 from typing import Optional
 from torch import nn
+from adic_components.DyT import DyT
 from adic_components.prototype2 import P2EncoderGluer
 from torchvision.ops import SqueezeExcitation
 import torch
@@ -124,16 +125,16 @@ class P3DecoderBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
         self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
-        self.norm0 = nn.RMSNorm(d_model)
+        self.norm0 = DyT(d_model)
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
-        self.norm1 = nn.RMSNorm(d_model)
+        self.norm1 = DyT(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
-        self.norm2 = nn.RMSNorm(d_model)
+        self.norm2 = DyT(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor, attention_mask = None) -> torch.Tensor:
         residual = x
@@ -157,7 +158,7 @@ class P3Decoder(nn.Module):
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.norm = nn.RMSNorm(self.hidden_size)
+        self.norm = DyT(self.hidden_size)
         self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
