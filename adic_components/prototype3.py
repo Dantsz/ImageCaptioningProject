@@ -8,6 +8,8 @@ from loguru import logger
 from adic_components.prototype2 import P2GPTBlock, P2DecoderCrossAttention
 from transformers import GPT2Config
 import torch.nn.functional as F
+import math
+
 class P3EncoderBlock(nn.Module):
     def __init__(self, in_channels: int, hidden_size:int, stride:int = 1, squeeze_channels: int = 16, expansion_factor: int = 4):
         '''
@@ -86,7 +88,6 @@ class P3Encoder(nn.Module):
         self.layer1 = self._make_layer(4, 64, 32)
         self.layer2 = self._make_layer(12, 128, 64)
         self.layer3 = self._make_layer(24, 256, 192)
-
         self.act = nn.ReLU()
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
@@ -150,8 +151,31 @@ class P3DecoderBlock(nn.Module):
         x = self.mlp(x) + residual
         return x
 
+class LoRAdLMHead(nn.Module):
+    def __init__(self, lm_head: nn.Module, r: int = 4, alpha: float = 1.0, dropout: float = 0.0):
+        super(LoRAdLMHead, self).__init__()
+        self.lm_head = lm_head
+        self.r = r
+        self.aplha = alpha
+        self.scale = alpha / r
+
+        self.lora_A = nn.Parameter(lm_head.in_features, r, bias=False)
+        self.lora_B = nn.Parameter(r, lm_head.out_features, bias=False)
+        nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B.weight)
+
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+        # freeze base layer
+        for param in self.base.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        base_out = self.base(x)
+        lora_out = self.lora_B(self.lora_A(self.dropout(x))) * self.scaling
+        return base_out + lora_out
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 2):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 3):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
@@ -174,8 +198,7 @@ class P3Decoder(nn.Module):
             nn.Dropout(dropout),
             nn.Linear(self.hidden_size * 4, self.hidden_size),
         )
-        self.lm_head = nn.Linear(self.hidden_size, self.vocab_size, bias=False)
-        self.lm_head.weight = nn.Parameter(self.gpt2.wte.weight.clone())
+        self.lm_head = LoRAdLMHead(self.gpt2.wte.weight, r=4, alpha=1.0, dropout=dropout)
 
     def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = False) -> torch.Tensor:
         # batch_size, seq_length, d_model = gpt2_output.shape
