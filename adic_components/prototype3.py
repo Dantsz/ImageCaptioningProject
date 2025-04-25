@@ -84,10 +84,9 @@ class P3Encoder(nn.Module):
         self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.layer1 = self._make_layer(4, 64, 32)
-        self.layer2 = self._make_layer(16, 128, 64)
-        self.layer3 = self._make_layer(32, 256, 192)
+        self.layer2 = self._make_layer(12, 128, 64)
+        self.layer3 = self._make_layer(24, 256, 192)
 
-        self.gluer = P2EncoderGluer(768, self.seq_length, d_model, dropout=0.3)
         self.act = nn.ReLU()
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
@@ -118,7 +117,6 @@ class P3Encoder(nn.Module):
 
         B, C, H, W = x.shape
         x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_modela, this is how the input to cross attention should look like
-        x = self.gluer(x)
         return x
 
 class P3DecoderBlock(nn.Module):
@@ -153,7 +151,7 @@ class P3DecoderBlock(nn.Module):
         return x
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 4):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.15, cross_attention_blocks: int = 2):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
