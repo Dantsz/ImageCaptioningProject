@@ -146,7 +146,7 @@ class P3DecoderBlock(nn.Module):
         x = x + residual
         residual = x
         x = self.norm1(x)
-        x = self.cross_attention(x, encoder_output) + x
+        x = self.cross_attention(x, encoder_output) + residual
         residual = x
         x = self.norm2(x)
         x = self.mlp(x) + residual
