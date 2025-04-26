@@ -85,8 +85,8 @@ class P3Encoder(nn.Module):
         # CNN blocks
         self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(4, 64, 32)
-        self.layer2 = self._make_layer(12, 128, 64)
+        self.layer1 = self._make_layer(3, 64, 32)
+        self.layer2 = self._make_layer(8, 128, 64)
         self.layer3 = self._make_layer(24, 256, 192)
         self.act = nn.ReLU()
 
@@ -172,13 +172,13 @@ class LoRAdLMHead(nn.Module):
         return base_out + lora_out
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.1, cross_attention_blocks: int = 2):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 2):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
         self.norm = DyT(self.hidden_size)
-        self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
+        self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 2, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
             nn.Linear(self.hidden_size, self.hidden_size),
@@ -190,10 +190,10 @@ class P3Decoder(nn.Module):
         # but then we can't fine-tune the model without touching the self-attention weights
         # so we use a separate embedding layer for the output
         self.mlp = nn.Sequential(
-            nn.Linear(self.hidden_size, self.hidden_size * 4),
+            nn.Linear(self.hidden_size, self.hidden_size * 2),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(self.hidden_size * 4, self.hidden_size),
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
         )
         self.lm_head = LoRAdLMHead(self.gpt2.wte, r=4, alpha=1.0, dropout=dropout)
 
@@ -207,7 +207,7 @@ class P3Decoder(nn.Module):
         logger.trace("Decoder input shape: {}", x.shape)
         logger.trace("Encoder output shape: {}", encoder_output.shape)
         # this is a different mask than the one from custom tranformers and should be safe to not use
-        gpt2_output = self.gpt2(x, attention_mask=None, use_cache=use_cache, past_key_values=past_key_values) # the output of the GPT-2 block is (batch_size, seq_length, d_model)
+        gpt2_output = self.gpt2(x, use_cache=use_cache, past_key_values=past_key_values) # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         x = gpt2_output.last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         x = self.query_adapter(x) + x # this is the Q projection before cross-attention
         logger.trace("Decoder output shape: {}", x.shape)
@@ -271,7 +271,7 @@ class P3ECDEC(nn.Module):
 
                 # Convert tokens to tensor and pass through the mode
                 input_ids = torch.tensor(tokens, dtype=torch.long, device=images.device).unsqueeze(0)
-                logits, past = self.decoder.forward(input_ids, encoder_output, use_cache=False, past_key_values=None)  # [batch_size, seq_len, vocab_size]
+                logits = self.decoder.forward(input_ids, encoder_output, use_cache=False, past_key_values=None)  # [batch_size, seq_len, vocab_size]
 
                 # Apply temperature to logits: divide by temperature
                 logits = logits[:, -1, :] / temperature  # Scale logits by temperature
