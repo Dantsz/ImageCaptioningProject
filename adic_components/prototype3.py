@@ -197,7 +197,7 @@ class P3Decoder(nn.Module):
         )
         self.lm_head = LoRAdLMHead(self.gpt2.wte, r=4, alpha=1.0, dropout=dropout)
 
-    def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = False) -> torch.Tensor:
+    def forward(self, x, encoder_output, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = False, past_key_values=None):
         # batch_size, seq_length, d_model = gpt2_output.shape
         x_shape = x.shape
         encoder_output_shape = encoder_output.shape
@@ -207,7 +207,8 @@ class P3Decoder(nn.Module):
         logger.trace("Decoder input shape: {}", x.shape)
         logger.trace("Encoder output shape: {}", encoder_output.shape)
         # this is a different mask than the one from custom tranformers and should be safe to not use
-        x = self.gpt2(x, attention_mask=None, use_cache=use_cache).last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
+        gpt2_output = self.gpt2(x, attention_mask=None, use_cache=use_cache, past_key_values=past_key_values) # the output of the GPT-2 block is (batch_size, seq_length, d_model)
+        x = gpt2_output.last_hidden_state # the output of the GPT-2 block is (batch_size, seq_length, d_model)
         x = self.query_adapter(x) + x # this is the Q projection before cross-attention
         logger.trace("Decoder output shape: {}", x.shape)
         for catt_block in self.catt_blocks:
@@ -218,6 +219,8 @@ class P3Decoder(nn.Module):
         x = self.mlp(x) + residual
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
+        if use_cache:
+            return x, gpt2_output.past_key_values
         return x
 class P3ECDEC(nn.Module):
     def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, decoder: nn.Module):
@@ -225,18 +228,20 @@ class P3ECDEC(nn.Module):
         self.encoder = P3Encoder(input_channels, input_width, input_height, d_model)
         self.decoder = decoder
 
-    def forward(self, tokens: torch.Tensor, images: torch.Tensor, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = None) -> torch.Tensor:
+    def forward(self, tokens: torch.Tensor, images: torch.Tensor, attention_mask: Optional[torch.FloatTensor] = None, use_cache: Optional[bool] = None, past_key_values=None) -> torch.Tensor:
         x = self.encoder(images)
-        x = self.decoder(tokens, x, attention_mask=attention_mask, use_cache=use_cache)
+        x = self.decoder(tokens, x, attention_mask=attention_mask, use_cache=use_cache, past_key_values=past_key_values)
         return x
 
     def generate(self, images: torch.Tensor, max_length: int = 16) -> torch.Tensor:
         batch_size = images.shape[0]
         assert batch_size == 1, "Batch size must be 1 for generation, currently"
         tokens = torch.ones(1, 1).long().to(images.device) * self.decoder.gpt2.config.bos_token_id
+        past = None
+        encoder_output = self.encoder(images)
         while tokens.shape[1] < max_length:
             # get the last token and pass it to the decoder
-            x = self.forward(tokens, images)
+            x, past = self.decoder.forward(tokens, encoder_output, use_cache=True, past_key_values=past)
             # get the last token
             x = torch.argmax(x[:, -1, :], dim=1).unsqueeze(0)
             tokens = torch.cat([tokens, x], dim=1).contiguous()
@@ -258,7 +263,6 @@ class P3ECDEC(nn.Module):
         encoder_output = self.encoder(images)  # Encode the images once, outside the loop, use the same for all beams
         for _ in range(max_length):
             all_candidates = []
-
             for tokens, score in beams:
                 # Skip beams that are already finished (EOS token generated, which is same as BOS)
                 if len(tokens) > 1 and tokens[-1] == self.decoder.gpt2.config.bos_token_id:
@@ -267,7 +271,7 @@ class P3ECDEC(nn.Module):
 
                 # Convert tokens to tensor and pass through the mode
                 input_ids = torch.tensor(tokens, dtype=torch.long, device=images.device).unsqueeze(0)
-                logits = self.decoder.forward(input_ids, encoder_output, use_cache=use_cache)  # [batch_size, seq_len, vocab_size]
+                logits, past = self.decoder.forward(input_ids, encoder_output, use_cache=False, past_key_values=None)  # [batch_size, seq_len, vocab_size]
 
                 # Apply temperature to logits: divide by temperature
                 logits = logits[:, -1, :] / temperature  # Scale logits by temperature
