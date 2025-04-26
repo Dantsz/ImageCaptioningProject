@@ -1,5 +1,6 @@
 import evaluate
 meteor = evaluate.load("meteor")
+blue = evaluate.load("bleu")
 import torch
 from typing import List
 from torch.nn import Module
@@ -8,6 +9,9 @@ from adic_components.CaptionsDataset import default_transform
 
 def compute_meteor_score(predictions, references) -> float:
     return meteor.compute(predictions=predictions, references=references)["meteor"]
+
+def compute_bleu_score(predictions: List[str], references: List[List[str]]) -> float:
+    return blue.compute(predictions=predictions, references=references)["bleu"]
 
 def evaluate_model(model: Module, image: Image, original_caption: str, tokenizer, device = torch.device('cuda' if torch.cuda.is_available() else 'cpu'), generate_func = None) -> float:
     """
