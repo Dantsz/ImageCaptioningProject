@@ -255,6 +255,7 @@ class P3ECDEC(nn.Module):
         beams = [([self.decoder.gpt2.config.bos_token_id], 0.0)] * beam_size
         finished = []
 
+        encoder_output = self.encoder(images)  # Encode the images once, outside the loop, use the same for all beams
         for _ in range(max_length):
             all_candidates = []
 
@@ -264,9 +265,9 @@ class P3ECDEC(nn.Module):
                     finished.append((tokens, score))
                     continue
 
-                # Convert tokens to tensor and pass through the model
+                # Convert tokens to tensor and pass through the mode
                 input_ids = torch.tensor(tokens, dtype=torch.long, device=images.device).unsqueeze(0)
-                logits = self.forward(input_ids, images, use_cache=use_cache)  # [batch_size, seq_len, vocab_size]
+                logits = self.decoder.forward(input_ids, encoder_output, use_cache=use_cache)  # [batch_size, seq_len, vocab_size]
 
                 # Apply temperature to logits: divide by temperature
                 logits = logits[:, -1, :] / temperature  # Scale logits by temperature
