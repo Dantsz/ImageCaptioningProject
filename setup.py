@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="EncoderDecoderProjectComponents",
-    version="0.3.62",
+    version="0.3.70",
     packages=find_packages(),
     install_requires=[
         "loguru"

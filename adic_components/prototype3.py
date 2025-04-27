@@ -174,12 +174,11 @@ class LoRAdLMHead(nn.Module):
         return base_out + lora_out
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 2):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 4):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.norm = DyT(self.hidden_size)
         self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 2, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
@@ -187,15 +186,6 @@ class P3Decoder(nn.Module):
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(self.hidden_size, self.hidden_size)
-        )
-        # these are the embeddings that that the decoder outputs, the original GPT-2 model uses the same embeddings for input and output
-        # but then we can't fine-tune the model without touching the self-attention weights
-        # so we use a separate embedding layer for the output
-        self.mlp = nn.Sequential(
-            nn.Linear(self.hidden_size, self.hidden_size * 2),
-            nn.GELU(),
-            nn.Dropout(dropout),
-            nn.Linear(self.hidden_size * 2, self.hidden_size),
         )
         self.lm_head = LoRAdLMHead(self.gpt2.wte, r=4, alpha=1.0, dropout=dropout)
 
@@ -216,9 +206,6 @@ class P3Decoder(nn.Module):
         for catt_block in self.catt_blocks:
             x = catt_block(x, encoder_output, attention_mask=attention_mask)
         logger.trace("Cross attention output shape: {}", x.shape)
-        residual = x
-        x = self.norm(x)
-        x = self.mlp(x) + residual
         x = self.lm_head(x)
         logger.trace("LM head output shape: {}", x.shape)
         if use_cache:
