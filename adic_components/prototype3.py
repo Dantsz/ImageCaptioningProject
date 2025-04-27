@@ -89,6 +89,7 @@ class P3Encoder(nn.Module):
         self.layer2 = self._make_layer(8, 128, 64)
         self.layer3 = self._make_layer(24, 256, 192)
         self.act = nn.ReLU()
+        self.norm = nn.LayerNorm(self.d_model)
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
         '''
@@ -118,6 +119,7 @@ class P3Encoder(nn.Module):
 
         B, C, H, W = x.shape
         x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_modela, this is how the input to cross attention should look like
+        x = self.norm(x)  # (batch_size, seq_length, d_model)
         return x
 
 class P3DecoderBlock(nn.Module):
