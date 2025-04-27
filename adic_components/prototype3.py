@@ -125,8 +125,8 @@ class P3Encoder(nn.Module):
 class P3DecoderBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, d_ff: int, dropout: float = 0.1):
         super(P3DecoderBlock, self).__init__()
-        self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
-        self.norm0 = DyT(d_model)
+        #self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
+        #self.norm0 = DyT(d_model)
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
         self.norm1 = DyT(d_model)
         self.mlp = nn.Sequential(
@@ -138,13 +138,13 @@ class P3DecoderBlock(nn.Module):
         self.norm2 = DyT(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor, attention_mask = None) -> torch.Tensor:
-        residual = x
-        x = self.norm0(x)
-        if attention_mask is not None:
-            x, _ = self.self_attention(x, x, x, attn_mask=attention_mask, is_causal=True) # self attention
-        else:
-            x, _ = self.self_attention(x, x, x)
-        x = x + residual
+        #residual = x
+        #x = self.norm0(x)
+        # if attention_mask is not None:
+        #     x, _ = self.self_attention(x, x, x, attn_mask=attention_mask, is_causal=True) # self attention
+        # else:
+        #     x, _ = self.self_attention(x, x, x)
+        #k = x + residual
         residual = x
         x = self.norm1(x)
         x = self.cross_attention(x, encoder_output) + residual
