@@ -89,7 +89,7 @@ class P3Encoder(nn.Module):
         self.layer2 = self._make_layer(8, 128, 64)
         self.layer3 = self._make_layer(24, 256, 192)
         self.act = nn.ReLU()
-        self.norm = nn.LayerNorm(self.d_model)
+        self.norm = DyT(self.d_model)
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
         '''
