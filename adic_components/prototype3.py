@@ -89,7 +89,7 @@ class P3Encoder(nn.Module):
         self.layer2 = self._make_layer(8, 128, 64)
         self.layer3 = self._make_layer(24, 256, 192)
         self.act = nn.ReLU()
-        self.norm = DyT(self.d_model)
+        self.norm = nn.LayerNorm(self.d_model)
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
         '''
@@ -128,14 +128,14 @@ class P3DecoderBlock(nn.Module):
         #self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
         #self.norm0 = DyT(d_model)
         self.cross_attention = P2DecoderCrossAttention(d_model, n_head, dropout=dropout)
-        self.norm1 = DyT(d_model)
+        self.norm1 = nn.LayerNorm(d_model)
         self.mlp = nn.Sequential(
             nn.Linear(d_model, d_ff),
             nn.GELU(),
             nn.Dropout(dropout),
             nn.Linear(d_ff, d_model),
         )
-        self.norm2 = DyT(d_model)
+        self.norm2 = nn.LayerNorm(d_model)
 
     def forward(self, x: torch.Tensor, encoder_output: torch.Tensor, attention_mask = None) -> torch.Tensor:
         #residual = x
