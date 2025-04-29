@@ -222,4 +222,25 @@ class CaptionDatasetValidation(Dataset):
         img_transformed = None
         if self.transform is not None:
             img_transformed = self.transform(img)
+        else:
+            img_transformed = img
         return img_transformed, img
+
+class CaptionDatasetMeteor(CaptionDatasetValidation):
+    '''
+    Returns an image and the list of references for that image.
+    '''
+    def __init__(self, images_dir: str, json_path: str, transform=None, tokenizer=None):
+        super().__init__(images_dir, json_path, transform, tokenizer)
+        self.image_to_caption_list_values = list(self.image_to_caption.values())
+        self.image_to_caption_list_keys = list(self.image_to_caption.keys())
+
+    def __getitem__(self, index):
+        captiond_idx = self.image_to_caption_list_values[index]
+        captions_text = [self.text_captions[i][1] for i in captiond_idx]
+        id = self.image_to_caption_list_keys[index]
+        path = self.img_paths[id]
+        return self._load_image(path)[0], captions_text
+
+    def __len__(self):
+        return len(self.image_to_caption_list_values)
