@@ -55,13 +55,42 @@ class P3EncoderBlock(nn.Module):
         x = self.act(x)
         return x
 
+# https://github.com/facebookresearch/detr/blob/main/models/position_encoding.py
+class P3Learned2DPositionalEncoding(nn.Module):
+    def __init__(self, height, width, dim):
+        super().__init__()
+        self.height = height
+        self.width = width
+        self.row_embed = nn.Parameter(torch.randn(height, dim // 2))
+        self.col_embed = nn.Parameter(torch.randn(width, dim // 2))
+
+    def forward(self):
+        # Expand and concatenate row and column embeddings
+        row = self.row_embed[:, None, :].expand(-1, self.width, -1)  # Shape: (H, W, D//2)
+        col = self.col_embed[None, :, :].expand(self.height, -1, -1)  # Shape: (H, W, D//2)
+        pos = torch.cat([row, col], dim=-1)  # Shape: (H, W, D)
+        pos = pos.reshape(self.height * self.width, -1)  # Shape: (H*W, D)
+        return pos
+
+class P3EncoderAttentionBlock(nn.Module):
+    def __init__(self, d_model: int, n_head: int, dropout: float = 0.1):
+        super(P3EncoderAttentionBlock, self).__init__()
+        self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
+        self.norm0 = DyT(d_model)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor: # no mask needed
+        residual = x
+        x = self.norm0(x)
+        x, _ = self.self_attention(x, x, x)
+        x += residual
+        return x
 class P3Encoder(nn.Module):
     '''
     Third encoder, second CNN encoder, which is used to encode the input image into a sequence of embeddings.
     https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py helped
     '''
 
-    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16):
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16, n_heads: int = 12):
         '''
         Args:
             intput_channels: The number of input channels (e.g., 3 for RGB images)
@@ -90,6 +119,9 @@ class P3Encoder(nn.Module):
         self.layer3 = self._make_layer(24, 256, 192)
         self.act = nn.ReLU()
         self.norm = DyT(self.d_model)
+        self.positional_encoding = P3Learned2DPositionalEncoding(input_height // 16, input_width // 16, d_model)
+        self.encoder_attention = P3EncoderAttentionBlock(d_model, n_heads)
+
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
         '''
@@ -118,7 +150,9 @@ class P3Encoder(nn.Module):
         x = self.layer3(x)
 
         B, C, H, W = x.shape
-        x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_modela, this is how the input to cross attention should look like
+        x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_model, this is how the input to cross attention should look like
+        x = x + self.positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model)
+        x = self.encoder_attention(x)  # (batch_size, seq_length, d_model)
         x = self.norm(x)  # (batch_size, seq_length, d_model)
         return x
 
