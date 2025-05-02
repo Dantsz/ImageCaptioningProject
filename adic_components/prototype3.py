@@ -194,7 +194,7 @@ class LoRA(nn.Module):
         self.alpha = alpha
         self.scale = alpha / r
         self.lora_A = nn.Linear(d_in, r, bias=False)
-        self.lora_B = nn.Linear(r, d_in, bias=False)
+        self.lora_B = nn.Linear(r, d_out, bias=False)
         nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
         nn.init.zeros_(self.lora_B.weight)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
