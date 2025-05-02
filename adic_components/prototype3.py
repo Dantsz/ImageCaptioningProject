@@ -82,15 +82,14 @@ class P3EncoderAttentionBlock(nn.Module):
         residual = x
         x = self.norm0(x)
         x, _ = self.self_attention(x, x, x)
-        x += residual
-        return x
+        return x + residual
 class P3Encoder(nn.Module):
     '''
     Third encoder, second CNN encoder, which is used to encode the input image into a sequence of embeddings.
     https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py helped
     '''
 
-    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16, n_heads: int = 12):
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16, n_heads: int = 12, attention_blocks: int = 2):
         '''
         Args:
             intput_channels: The number of input channels (e.g., 3 for RGB images)
@@ -120,7 +119,7 @@ class P3Encoder(nn.Module):
         self.act = nn.ReLU()
         self.norm = DyT(self.d_model)
         self.positional_encoding = P3Learned2DPositionalEncoding(input_height // 16, input_width // 16, d_model)
-        self.encoder_attention = P3EncoderAttentionBlock(d_model, n_heads)
+        self.encoder_attention = nn.ModuleList([P3EncoderAttentionBlock(d_model, n_heads) for _ in range(attention_blocks)])
 
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
@@ -152,7 +151,8 @@ class P3Encoder(nn.Module):
         B, C, H, W = x.shape
         x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_model, this is how the input to cross attention should look like
         x = x + self.positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model)
-        x = self.encoder_attention(x)  # (batch_size, seq_length, d_model)
+        for attention_block in self.encoder_attention:
+            x = attention_block(x)
         x = self.norm(x)  # (batch_size, seq_length, d_model)
         return x
 
@@ -187,24 +187,36 @@ class P3DecoderBlock(nn.Module):
         x = self.mlp(x) + residual
         return x
 
+class LoRA(nn.Module):
+    def __init__(self, d_in: int, d_out: int, r: int = 4, alpha: float = 1.0, dropout: float = 0.0):
+        super(LoRA, self).__init__()
+        self.r = r
+        self.alpha = alpha
+        self.scale = alpha / r
+        self.lora_A = nn.Linear(d_in, r, bias=False)
+        self.lora_B = nn.Linear(r, d_in, bias=False)
+        nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
+        nn.init.zeros_(self.lora_B.weight)
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+    def forward(self, x):
+        lora_out = self.lora_B(self.lora_A(self.dropout(x))) * self.scale
+        return lora_out
+
 class LoRAdLMHead(nn.Module):
     def __init__(self, lm_head: nn.Embedding, r: int = 4, alpha: float = 1.0, dropout: float = 0.0):
         super(LoRAdLMHead, self).__init__()
         self.lm_head = lm_head
         self.r = r
-        self.aplha = alpha
+        self.alpha = alpha
         self.scale = alpha / r
         d, vocab = lm_head.embedding_dim, lm_head.num_embeddings
-        self.lora_A = nn.Linear(d, r, bias=False)
-        self.lora_B = nn.Linear(r, vocab, bias=False)
-        nn.init.kaiming_uniform_(self.lora_A.weight, a=math.sqrt(5))
-        nn.init.zeros_(self.lora_B.weight)
-        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.lora = LoRA(d, vocab, r=r, alpha=alpha, dropout=dropout)
         self.lm_head.weight.requires_grad = False
 
     def forward(self, x):
         base_out = F.linear(x, self.lm_head.weight)  # x: [B, T, D]
-        lora_out = self.lora_B(self.lora_A(self.dropout(x))) * self.scale
+        lora_out = self.lora(x)  # lora_out: [B, T, V]
         return base_out + lora_out
 
 class P3Decoder(nn.Module):
@@ -213,13 +225,13 @@ class P3Decoder(nn.Module):
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
         self.vocab_size = gpt2_config.vocab_size
-        self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 2, dropout=dropout) for _ in range(cross_attention_blocks)])
+        self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
-            nn.Linear(self.hidden_size, self.hidden_size),
+            nn.Linear(self.hidden_size, self.hidden_size * 4),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(self.hidden_size, self.hidden_size)
+            nn.Linear(self.hidden_size * 4, self.hidden_size)
         )
         self.lm_head = LoRAdLMHead(self.gpt2.wte, r=4, alpha=1.0, dropout=dropout)
 
