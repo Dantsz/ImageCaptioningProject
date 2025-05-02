@@ -228,10 +228,16 @@ class P3Decoder(nn.Module):
         self.catt_blocks = nn.ModuleList([P3DecoderBlock(self.hidden_size, gpt2_config.n_head, self.hidden_size * 4, dropout=dropout) for _ in range(cross_attention_blocks)])
         # Adapter MLP for Q projection before cross-attention
         self.query_adapter = nn.Sequential(
-            nn.Linear(self.hidden_size, self.hidden_size * 4),
+            nn.Linear(self.hidden_size, self.hidden_size * 2),
             nn.GELU(),
             nn.Dropout(dropout),
-            nn.Linear(self.hidden_size * 4, self.hidden_size)
+            nn.Linear(self.hidden_size * 2, self.hidden_size * 4),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(self.hidden_size * 4, self.hidden_size * 2),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(self.hidden_size * 2, self.hidden_size),
         )
         self.lm_head = LoRAdLMHead(self.gpt2.wte, r=4, alpha=1.0, dropout=dropout)
 
