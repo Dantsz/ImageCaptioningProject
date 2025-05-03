@@ -28,7 +28,7 @@ def evaluate_model(model: Module, image: Image, original_caption: str, tokenizer
     Returns:
         float: The METEOR score of the model's prediction against the original caption.
     """
-    img_pixel_values = default_transform(image).unsqueeze(0)
+    img_pixel_values = image.unsqueeze(0)
     img_pixel_values = img_pixel_values.to(device)
     generated_caption = None
     if generate_func is None:
@@ -39,6 +39,7 @@ def evaluate_model(model: Module, image: Image, original_caption: str, tokenizer
         generated_caption = generate_func(img_pixel_values)
     assert generated_caption is not None, "Generated caption is None"
     generated_caption = tokenizer.batch_decode(generated_caption.cpu(), skip_special_tokens=True)[0]
+    print(f"Generated caption: {generated_caption}, Original caption: {original_caption}")
 
     # Compute METEOR score
     meteor_score = compute_meteor_score([generated_caption], [original_caption])
