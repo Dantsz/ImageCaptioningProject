@@ -78,11 +78,28 @@ class P3EncoderAttentionBlock(nn.Module):
         self.self_attention = nn.MultiheadAttention(d_model, n_head, dropout=dropout, batch_first=True)
         self.norm0 = DyT(d_model)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor: # no mask needed
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor: # no mask needed
         residual = x
         x = self.norm0(x)
-        x, _ = self.self_attention(x, x, x)
+        x, _ = self.self_attention(x, y, y)
         return x + residual
+
+class P3SpaceToDepth(nn.Module):
+    def __init__(self, block_size):
+        super(P3SpaceToDepth, self).__init__()
+        self.block_size = block_size
+
+    def forward(self, x):
+        N, C, H, W = x.size()
+        assert H % self.block_size == 0 and W % self.block_size == 0, \
+            "Height and Width must be divisible by block_size"
+
+        bs = self.block_size
+        x = x.view(N, C, H // bs, bs, W // bs, bs)
+        x = x.permute(0, 1, 3, 5, 2, 4).contiguous()
+        x = x.view(N, C * bs * bs, H // bs, W // bs)
+        return x
+
 class P3Encoder(nn.Module):
     '''
     Third encoder, second CNN encoder, which is used to encode the input image into a sequence of embeddings.
@@ -121,6 +138,11 @@ class P3Encoder(nn.Module):
         self.positional_encoding = P3Learned2DPositionalEncoding(input_height // 16, input_width // 16, d_model)
         self.encoder_attention = nn.ModuleList([P3EncoderAttentionBlock(d_model, n_heads) for _ in range(attention_blocks)])
 
+        self.space_to_depth = P3SpaceToDepth(block_size=2)
+        self.layer_0_downsample = nn.Conv2d(in_channels=64, out_channels=64, kernel_size=1, stride=2, padding=0, bias=False)
+        self.pass_through_positional_encoding = P3Learned2DPositionalEncoding(input_height // 8, input_width // 8, d_model)
+        self.pass_through_norm = DyT(self.d_model)
+
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
         '''
@@ -144,7 +166,16 @@ class P3Encoder(nn.Module):
             A tensor of shape (batch_size, d_model) containing the embeddings
         '''
         x = self.act(self.bn1(self.conv1(x)))
+        l0 = self.layer_0_downsample(x)
         x = self.layer1(x)
+        l1 = x
+        low_features = torch.cat([l0, l1], dim=1)
+        low_features = self.space_to_depth(low_features)
+        low_features = low_features.view(low_features.shape[0], low_features.shape[1], -1).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_model)
+        low_features = low_features  + self.pass_through_positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model), but seq_length is different than on the residual flow
+        low_features = self.pass_through_norm(low_features)  # (batch_size, seq_length, d_model)
+
+
         x = self.layer2(x)
         x = self.layer3(x)
 
@@ -152,7 +183,7 @@ class P3Encoder(nn.Module):
         x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_model, this is how the input to cross attention should look like
         x = x + self.positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model)
         for attention_block in self.encoder_attention:
-            x = attention_block(x)
+            x = attention_block(x, low_features)
         x = self.norm(x)  # (batch_size, seq_length, d_model)
         return x
 
