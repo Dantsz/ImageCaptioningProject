@@ -172,7 +172,7 @@ class P3Encoder(nn.Module):
         low_features = torch.cat([l0, l1], dim=1)
         low_features = self.space_to_depth(low_features)
         low_features = low_features.view(low_features.shape[0], low_features.shape[1], -1).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_model)
-        low_features = low_features  + self.pass_through_positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model), but seq_length is different than on the residual flow
+        low_features = low_features + self.pass_through_positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model), but seq_length is different than on the residual flow
         low_features = self.pass_through_norm(low_features)  # (batch_size, seq_length, d_model)
 
 
@@ -251,7 +251,7 @@ class LoRAdLMHead(nn.Module):
         return base_out + lora_out
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 4):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 6):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
