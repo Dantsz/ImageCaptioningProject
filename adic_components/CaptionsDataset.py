@@ -212,7 +212,7 @@ class CaptionDatasetValidation(Dataset):
         assert len(self.captions) == len(self.text_captions), "Number of captions and text captions do not match"
         logger.trace("Loaded {} captions", len(self.captions))
 
-    def get_image_id_by_index(self, index):
+    def get_image_id_by_caption_index(self, index):
         """
         Returns the image id for a given caption index.
         """
