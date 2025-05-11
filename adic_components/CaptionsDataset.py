@@ -192,7 +192,9 @@ class CaptionDatasetValidation(Dataset):
         self.captions = []
         self.text_captions = []
         self.image_to_caption = {}
+        self.caption_index_to_image_id = {}
         for imgdata in annotations['annotations']:
+            caption_index = len(self.captions)
             id = imgdata['image_id']
             caption = imgdata['caption']
             assert len(caption) > 0, "Caption is empty"
@@ -205,9 +207,16 @@ class CaptionDatasetValidation(Dataset):
             inserted_index = len(self.captions) - 1
             if id not in self.image_to_caption:
                 self.image_to_caption[id] = []
+            self.caption_index_to_image_id[caption_index] = id
             self.image_to_caption[id].append(inserted_index)
         assert len(self.captions) == len(self.text_captions), "Number of captions and text captions do not match"
         logger.trace("Loaded {} captions", len(self.captions))
+
+    def get_image_id_by_index(self, index):
+        """
+        Returns the image id for a given caption index.
+        """
+        return self.caption_index_to_image_id[index]
 
     def __getitem__(self, index):
         img_path, caption = self.captions[index]
@@ -226,7 +235,7 @@ class CaptionDatasetValidation(Dataset):
             img_transformed = img
         return img_transformed, img
 
-class CaptionDatasetMeteor(CaptionDatasetValidation):
+class CaptionDatasetPyCOCO(CaptionDatasetValidation):
     '''
     Returns an image and the list of references for that image.
     '''
