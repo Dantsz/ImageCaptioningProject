@@ -90,7 +90,7 @@ class P3Encoder(nn.Module):
     https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py helped
     '''
 
-    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16, n_heads: int = 12, attention_blocks: int = 2):
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16, n_heads: int = 12, attention_blocks: int = 4):
         '''
         Args:
             intput_channels: The number of input channels (e.g., 3 for RGB images)
@@ -188,7 +188,7 @@ class P3DecoderBlock(nn.Module):
         x = self.mlp(x) + residual
         return x
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 12):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 8):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
