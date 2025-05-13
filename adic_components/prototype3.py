@@ -188,7 +188,7 @@ class P3DecoderBlock(nn.Module):
         x = self.mlp(x) + residual
         return x
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 4):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 12):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
