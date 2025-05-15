@@ -72,7 +72,7 @@ class P3Learned2DPositionalEncoding(nn.Module):
         pos = torch.cat([row, col], dim=-1)  # Shape: (H, W, D)
         pos = pos.reshape(self.height * self.width, -1)  # Shape: (H*W, D)
         return pos
-
+# unused
 class P3EncoderAttentionBlock(nn.Module):
     def __init__(self, d_model: int, n_head: int, dropout: float = 0.1):
         super(P3EncoderAttentionBlock, self).__init__()
@@ -90,7 +90,7 @@ class P3Encoder(nn.Module):
     https://github.com/JayPatwardhan/ResNet-PyTorch/blob/master/ResNet/ResNet.py helped
     '''
 
-    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16, n_heads: int = 12, attention_blocks: int = 4):
+    def __init__(self, input_channels: int, input_width: int, input_height: int, d_model: int, expansion_factor: int = 4, squeeze_channels: int = 16):
         '''
         Args:
             intput_channels: The number of input channels (e.g., 3 for RGB images)
@@ -107,20 +107,28 @@ class P3Encoder(nn.Module):
         self.expansion_factor = expansion_factor
         self.squeeze_channels = squeeze_channels
         # derive sequence length from input dimensions
-        self.seq_length = (input_width // 16) * (input_height // 16)
         self.input_channels = input_channels
         self.input_width = input_width
         self.input_height = input_height
         # CNN blocks
-        self.conv1 = nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(3, 64, 32)
-        self.layer2 = self._make_layer(8, 128, 64)
-        self.layer3 = self._make_layer(32, 256, 192)
-        self.act = nn.ReLU()
+
+        self.l0 = nn.Sequential(
+            nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True))
+
+        self.layers = nn.ModuleList([
+                                     self.l0,
+                                     self._make_layer(3, 64, 32),
+                                     self._make_layer(8, 128, 64),
+                                     self._make_layer(23, 256, 128),
+                                     self._make_layer(3, 512, 192)])
+
+        self.downsampling_factor = 2 ** len(self.layers)
+        self.seq_length = (input_width // self.downsampling_factor) * (input_height // self.downsampling_factor)
+
         self.norm = DyT(self.d_model)
-        self.positional_encoding = P3Learned2DPositionalEncoding(input_height // 16, input_width // 16, d_model)
-        self.encoder_attention = nn.ModuleList([P3EncoderAttentionBlock(d_model, n_heads) for _ in range(attention_blocks)])
+        self.positional_encoding = P3Learned2DPositionalEncoding(input_height // self.downsampling_factor, input_width // self.downsampling_factor, d_model)
 
 
     def _make_layer(self, blocks: int, in_channels: int, hidden_size: int):
@@ -144,16 +152,12 @@ class P3Encoder(nn.Module):
         Returns:
             A tensor of shape (batch_size, d_model) containing the embeddings
         '''
-        x = self.act(self.bn1(self.conv1(x)))
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
+        for layer in self.layers:
+            x = layer(x)
 
         B, C, H, W = x.shape
         x = x.view(B, C, H * W).permute(0, 2, 1)  # (batch_size, d_model, seq_length) -> (batch_size, seq_length, d_model, this is how the input to cross attention should look like
         x = x + self.positional_encoding()[None, :, :]  # (batch_size, seq_length, d_model)
-        for attention_block in self.encoder_attention:
-            x = attention_block(x)
         x = self.norm(x)  # (batch_size, seq_length, d_model)
         return x
 
@@ -188,7 +192,7 @@ class P3DecoderBlock(nn.Module):
         x = self.mlp(x) + residual
         return x
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 8):
+    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.2, cross_attention_blocks: int = 6):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
