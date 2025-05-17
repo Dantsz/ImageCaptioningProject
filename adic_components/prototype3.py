@@ -112,13 +112,13 @@ class P3Encoder(nn.Module):
         self.input_height = input_height
         # CNN blocks
 
-        self.l0 = nn.Sequential(
+        l0 = nn.Sequential(
             nn.Conv2d(input_channels, 64, kernel_size=3, stride=2, padding=1, bias=False),
             nn.BatchNorm2d(64),
             nn.ReLU(inplace=True))
 
         self.layers = nn.ModuleList([
-                                     self.l0,
+                                     l0,
                                      self._make_layer(3, 64, 32),
                                      self._make_layer(8, 128, 64),
                                      self._make_layer(23, 256, 128),
