@@ -8,10 +8,12 @@ class LoRA(nn.Module):
         super(LoRA, self).__init__()
         self.r = r
         self.alpha = alpha
+        # Scale factor for 'stablity'
         self.scale = alpha / r
         self.lora_A = nn.Linear(d_in, r, bias=False)
         self.lora_B = nn.Linear(r, d_out, bias=False)
-        nn.init.kaiming_uniform_(self.lora_A.weight)
+        # init A from a Gaussian distribution and B to zero
+        nn.init.normal_(self.lora_A.weight)
         nn.init.zeros_(self.lora_B.weight)
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
@@ -21,6 +23,13 @@ class LoRA(nn.Module):
 
 class LoRAdLMHead(nn.Module):
     def __init__(self, lm_head: nn.Embedding, r: int = 4, alpha: float = 1.0, dropout: float = 0.0):
+        ''' Wraps a language model head with a LoRA layer.
+        Args:
+            lm_head (nn.Embedding): The original language model head.
+            r (int): The rank of the LoRA layer.
+            alpha (float): The scaling factor for the LoRA layer.
+            dropout (float): Dropout rate for the LoRA layer.
+        '''
         super(LoRAdLMHead, self).__init__()
         self.lm_head = lm_head
         self.r = r
