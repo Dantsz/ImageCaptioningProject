@@ -2,7 +2,8 @@ import torch
 import copy
 from typing import Optional, Tuple, Union
 from torch import nn
-from transformers import GPT2Model, GPT2Config
+from transformers import GPT2Model
+from transformers.modeling_utils import PretrainedConfig
 from transformers.modeling_outputs import BaseModelOutputWithPastAndCrossAttentions
 from transformers.modeling_attn_mask_utils import _prepare_4d_causal_attention_mask_for_sdpa, _prepare_4d_attention_mask_for_sdpa
 from adic_components.DyT import DyT
@@ -131,10 +132,10 @@ class P2GPTBlock(GPT2Model):
         The GPT block of the decoder is very similar to a GPT-2, with addition of a cross attention layer and decoupled embedding/de-embedding MLPs,
         this is done to allow fine-tuning of the model without touching the self-attention weights.
     '''
-    def __init__(self, config: GPT2Config):
+    def __init__(self, config: PretrainedConfig):
         super(P2GPTBlock, self).__init__(config=config)
 class P2Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, lm_dropout: float = 0.3):
+    def __init__(self, gpt2_config: PretrainedConfig, lm_dropout: float = 0.3):
         super(P2Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
