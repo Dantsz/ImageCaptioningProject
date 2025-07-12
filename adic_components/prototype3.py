@@ -6,6 +6,7 @@ from torchvision.ops import SqueezeExcitation
 import torch
 from loguru import logger
 from adic_components.prototype2 import P2GPTBlock, P2DecoderCrossAttention
+from transformers.modeling_utils import PretrainedConfig
 from adic_components.finetune import LoRAdLMHead
 from transformers import GPT2Config
 import torch.nn.functional as F
@@ -218,7 +219,7 @@ class P3CrossAttentionBlock(nn.Module):
         return x
 
 class P3Decoder(nn.Module):
-    def __init__(self, gpt2_config: GPT2Config, dropout: float = 0.1, transformer_blocks: int = 2, catt_blocks: int = 2):
+    def __init__(self, gpt2_config: PretrainedConfig, dropout: float = 0.1, transformer_blocks: int = 2, catt_blocks: int = 2):
         super(P3Decoder, self).__init__()
         self.gpt2 = P2GPTBlock(gpt2_config)
         self.hidden_size = gpt2_config.n_embd
