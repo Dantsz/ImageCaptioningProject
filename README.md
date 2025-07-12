@@ -5,3 +5,9 @@ This project presents an image captioning model that integrates a custom convolu
 ## Architecture
 
 ![Architecture](https://github.com/Dantsz/ImageCaptioningProject/blob/main/resources/architecture.png?raw=true)
+
+## Comfyui nodes
+
+Folder `comfyui_nodes` contains custom nodes for ComfyUI:
+
+![ComfyUI Nodes](https://github.com/Dantsz/ImageCaptioningProject/blob/main/resources/comfyui_nodes.png?raw=true)
